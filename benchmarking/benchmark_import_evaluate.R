@@ -21,7 +21,7 @@ tdat.prj <- proj4string(tdat.terrestrial.spdf)
 tdat.spdf <- merge(tdat.terrestrial.spdf, tdat.remote.spdf)
 tdat <- tdat.spdf@data
 
-indicator.lut <- read.csv(paste0(data.path, "/", tdat.indicators.lut), stringsAsFactors = F)
+indicator.lut <- read.csv(paste0(data.path, tdat.indicators.lut), stringsAsFactors = F)
 
 
 ## Function for reading in the benchmarks from the Data Explorer
@@ -48,11 +48,11 @@ read.benchmarks <- function(data.path = "", ## Path to the folder containing the
   
   ## Create the evaluations for the upper and lower limits of each benchmark.
   ## The way the spreadsheet is configured, there should be no rows without both defined
-  benchmarks$eval.string.lower <- paste0(benchmarks$Lower.Limit, benchmarks$LL.Relation)
-  benchmarks$eval.string.upper <- paste0(benchmarks$UL.Relation, benchmarks$Upper.Limit)
+  benchmarks$eval.string.lower <- paste(benchmarks$Lower.Limit, benchmarks$LL.Relation)
+  benchmarks$eval.string.upper <- paste(benchmarks$UL.Relation, benchmarks$Upper.Limit)
   
   ## Create an evaluation string for future use with the required proportion and its relationship
-  benchmarks$eval.string.proportion <- paste0(benchmarks$Proportion.Relation, benchmarks$Required.Proportion)
+  benchmarks$eval.string.proportion[!is.na(benchmarks$Required.Proportion)] <- paste(benchmarks$Proportion.Relation[!is.na(benchmarks$Required.Proportion)], benchmarks$Required.Proportion[!is.na(benchmarks$Required.Proportion)])
   
   ## For each benchmark add in the name of the field in TerrADat that corresponds
   benchmarks <- merge(x = benchmarks, y = indicator.lut, by.x = "Indicator", by.y = indicator.lut.benchmarkfield)

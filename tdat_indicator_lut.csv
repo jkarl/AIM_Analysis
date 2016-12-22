@@ -1,5 +1,5 @@
 indicator.name.alt,indicator.tdat,indicator.name,source
-Bare Soil Cover (First Hit%),BareSoilCover_FH,Bare Soil Cover (%),Terrestrial AIM
+Bare Soil Cover (First Hit%),BareSoilCover_FH,Bare Soil (%),Terrestrial AIM
 Total Foliar Cover (First Hit%),TotalFoliarCover_FH,Foliar Cover (%),Terrestrial AIM
 Gaps 25-50 cm (%),GapPct_25_50,Percent in Gaps 25-50 cm,Terrestrial AIM
 Gaps 51-100 cm (%),GapPct_51_100,Percent in Gaps 51-100 cm,Terrestrial AIM
