@@ -15,13 +15,21 @@ RMarkdown:
   CA_ELFO_report_20161221.html
 
 Recommend that you prescribe this as an output at the beginning of each script:
+
   out.src <- "filepath"
+  
   # Making sure that out.src ends in a "/" so it can be safely assumed later
+  
   if (!grepl(x = out.src, pattern = "/$")) {
   out.src <- paste0(out.src, "/")
   }
+  
   out.filename <- "Sate_FO_Project"
+  
   # The code to create the output filename in this case would be:
+  
   paste(out.filename, "wgt", strftime(Sys.Date(), "%Y%m%d"), sep = "_")
-  # Or to create the full filepath to write out to a .csv:
+  
+  # Or to create the full filepath to write out to a .csv:
+  
   write.csv(output.df, paste0(out.src, out.filename, "_wgt_", strftime(Sys.Date(), "%Y%m%d"), ".csv")
