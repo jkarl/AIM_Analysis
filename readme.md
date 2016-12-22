@@ -1,25 +1,27 @@
 Repository for scripts and documents related to the AIM Analysis/Reporting Workflow.
 
 Output file names should have a common format:
-  FO_Project_Step_systemdate.ext 
+  State_FO_Project_Step_systemdate.ext 
 
-FO and Project are optional depending on the analysis, however a minimum of one is required. Maintaining some kind of administrative name at the beginning of the file is useful. "Project" is for our own internal tracking at this point and doesn't necessarily refer to the sample design, so it could be something like "2017_GrazAllots" as long as it's consistent between steps in the process.
+State, FO, and Project are optional depending on the analysis, however a minimum of one is required. Maintaining some kind of administrative name at the beginning of the file is useful. "Project" is for our own internal tracking at this point and doesn't necessarily refer to the sample design, so it could be something like "2017_GrazAllots" as long as it's consistent between steps in the process.
 
 For instance, the weights output file for NorCal could be:
-  ELFO_wgt_20161221.csv
+  CA_ELFO_wgt_20161221.csv
 
 The data explorer might be: 
-  ELFO_explorer_20161221.xlsx
+  CA_ELFO_explorer_20161221.xlsx
 
 RMarkdown:
-  ELFO_report_20161221.html
+  CA_ELFO_report_20161221.html
 
 Recommend that you prescribe this as an output at the beginning of each script:
-  out.src<-"filepath"
-  out.filename<-"FO_Project" #the remainder of the filename can be scripted
-
-The code to create the output filename in this case would be:
+  out.src <- "filepath"
+  # Making sure that out.src ends in a "/" so it can be safely assumed later
+  if (!grepl(x = out.src, pattern = "/$")) {
+  out.src <- paste0(out.src, "/")
+  }
+  out.filename <- "Sate_FO_Project"
+  # The code to create the output filename in this case would be:
   paste(out.filename, "wgt", strftime(Sys.Date(), "%Y%m%d"), sep = "_")
-
-Or to create the full filepath to write out to a .csv (assuming your out.src string doesn't end in "/"):
-  write.csv(output.df, paste0(out.src, "/", out.filename, "_wgt_", strftime(Sys.Date(), "%Y%m%d"), ".csv")
+  # Or to create the full filepath to write out to a .csv:
+  write.csv(output.df, paste0(out.src, out.filename, "_wgt_", strftime(Sys.Date(), "%Y%m%d"), ".csv")
