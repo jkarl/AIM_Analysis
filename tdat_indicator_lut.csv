@@ -1,66 +1,66 @@
-indicator.name.alt,indicator.tdat,indicator.name,source
-Bare Soil Cover (First Hit%),BareSoilCover_FH,Bare Soil (%),Terrestrial AIM
-Total Foliar Cover (First Hit%),TotalFoliarCover_FH,Foliar Cover (%),Terrestrial AIM
-Gaps 25-50 cm (%),GapPct_25_50,Percent in Gaps 25-50 cm,Terrestrial AIM
-Gaps 51-100 cm (%),GapPct_51_100,Percent in Gaps 51-100 cm,Terrestrial AIM
-Gaps 101-200 cm (%),GapPct_101_200,Percent in Gaps 101-200 cm,Terrestrial AIM
-Gaps > 200 cm(%),GapPct_200_plus,Percent in Gaps > 200 cm,Terrestrial AIM
-Gaps > 25 cm(%),GapPct_25_plus,Percent in Gaps > 25 cm,Terrestrial AIM
-NonInv Peren Forb Cover (Any Hit %),NonInvPerenForbCover_AH,"Non-invasive Perennial Forb Cover (%, any hit)",Terrestrial AIM
-NonInv Ann Forb Cover (Any Hit %),NonInvAnnForbCover_AH,"Non-invasive Annual Forb Cover  (%, any hit)",Terrestrial AIM
-NonInv Peren Grass Cover (Any Hit %),NonInvPerenGrassCover_AH,"Non-invasive Perennial Grass Cover  (%, any hit)",Terrestrial AIM
-NonInv Ann Grass Cover (Any Hit %),NonInvAnnGrassCover_AH,"Non-invasive Annual Grass Cover  (%, any hit)",Terrestrial AIM
-NonInv Ann Forb/Grass Cover (Any Hit %),NonInvAnnForbGrassCover_AH,"Non-invasive Annual Forb/Grass Cover  (%, any hit)",Terrestrial AIM
-NonInv Peren Forb/Grass Cover (Any Hit %),NonInvPerenForbGrassCover_AH,"Non-invasive Perennial Forb/Grass Cover  (%, any hit)",Terrestrial AIM
-NonInv Succulent Cover (Any Hit %),NonInvSucculentCover_AH,"Non-invasive Succulent Cover  (%, any hit)",Terrestrial AIM
-NonInv Shrub Cover (Any Hit %),NonInvShrubCover_AH,"Non-invasive Shrub Cover  (%, any hit)",Terrestrial AIM
-NonInv Sub-shrub Cover (Any Hit %),NonInvSubShrubCover_AH,"Non-invasive Sub-shrub Cover  (%, any hit)",Terrestrial AIM
-NonInv Tree Cover (Any Hit %),NonInvTreeCover_AH,"Non-invasive Tree Cover  (%, any hit)",Terrestrial AIM
-Inv Peren Forb Cover (Any Hit %),InvPerenForbCover_AH,"Non-invasive Perennial Forb Cover  (%, any hit)",Terrestrial AIM
-Inv Ann Forb Cover (Any Hit %),InvAnnForbCover_AH,"Invasive Annual Forb Cover  (%, any hit)",Terrestrial AIM
-Inv Peren Grass Cover (Any Hit %),InvPerenGrassCover_AH,"Invasive Perennial Grass Cover  (%, any hit)",Terrestrial AIM
-Inv Ann Grass Cover (Any Hit %),InvAnnGrassCover_AH,"Invasive Annual Grass Cover  (%, any hit)",Terrestrial AIM
-Inv Ann Forb/Grass Cover (Any Hit %),InvAnnForbGrassCover_AH,"Invasive Annual Forb/Grass Cover  (%, any hit)",Terrestrial AIM
-Inv Peren Forb/Grass Cover (Any Hit %),InvPerenForbGrassCover_AH,"Invasive Perennial Forb/Grass Cover  (%, any hit)",Terrestrial AIM
-Inv Succulent Cover (Any Hit %),InvSucculentCover_AH,"Invasive Succulent Cover  (%, any hit)",Terrestrial AIM
-Inv Shrub Cover (Any Hit %),InvShrubCover_AH,"Invasive Shrub Cover  (%, any hit)",Terrestrial AIM
-Inv Sub-shrub Cover (Any Hit %),InvSubShrubCover_AH,"Invasive Sub-shrub Cover  (%, any hit)",Terrestrial AIM
-Inv Tree Cover (Any Hit %),InvTreeCover_AH,"Invasive Tree Cover  (%, any hit)",Terrestrial AIM
-Sagebrush Cover (Any Hit%),SagebrushCover_AH,"Sagebrush Cover  (%, any hit)",Terrestrial AIM
-Woody Hgt Avg (cm),WoodyHgt_Avg,Average Woody Height (cm),Terrestrial AIM
-Herbaceous Hgt Avg (cm),HerbaceousHgt_Avg,Average Herbaceous Height (cm),Terrestrial AIM
-Sagebrush Hgt Avg (cm),SagebrushHgt_Avg,Average Sagebrush Heightt (cm),Terrestrial AIM
-Other Shrub Hgt Avg (cm),OtherShrubHgt_Avg,Averge Non-Sagebrush Shrub Height (cm),Terrestrial AIM
-NonInv Peren Grass Hgt Avg (cm),NonInvPerenGrassHgt_Avg,Average Non-invasive Perennial Grass Height (cm),Terrestrial AIM
-Inv Peren Grass Hgt Avg (cm),InvPerenGrassHgt_Avg,Average Invasive Perennial Grass Height (cm),Terrestrial AIM
-Inv Plant Cover (Any Hit %),InvPlantCover_AH,"Invasive Plant Cover  (%, any hit)",Terrestrial AIM
-Number of Inv Plant Sp,InvPlant_NumSp,Number of Invasive Plant Species,Terrestrial AIM
-Soil Stability All Rating,SoilStability_All,Overall Soil Stability Rating,Terrestrial AIM
-Soil Stability Protected Surface Rating,SoilStability_Protected,Protected Surface Soil Stability Rating,Terrestrial AIM
-Soil Stability Unprotected Surface Rating,SoilStability_Unprotected,Unprotected Surface Soil Stability Rating,Terrestrial AIM
-,HerbLitterCover_FH,Between-Canopy Herbaceous Litter Cover (%),Remote Sensing
-,WoodyLitterCover_FH,Between-Canopy Woody Litter (%),Remote Sensing
-,TotalLitterCover_FH,Between-Canopy Herbaceous and Woody Litter (%),Remote Sensing
-,RockCover_FH,Between-Canopy Rock Cover (%),Remote Sensing
-,BiologicalCrustCover_FH,Between-Canopy Biological Crust Cover (%),Remote Sensing
-,VagrLichenCover_FH,Between-Canopy Vagrant Lichen Cover (%),Remote Sensing
-,LichenMossCover_FH,Between-Canopy Lichen and Moss Cover (%),Remote Sensing
-,DepSoilCover_FH,Between-Canopy Deposited Soil Cover (%),Remote Sensing
-,WaterCover_FH,Between-Canopy Water Cover (%),Remote Sensing
-,NonInvPerenForbCover_FH,"Non-invasive Perennial Forb Cover (%, first hit)",Remote Sensing
-,NonInvAnnForbCover_FH,"Non-invasive Annual Forb Cover  (%, first hit)",Remote Sensing
-,NonInvPerenGrassCover_FH,"Non-invasive Perennial Grass Cover  (%, first hit)",Remote Sensing
-,NonInvAnnGrassCover_FH,"Non-invasive Annual Grass Cover  (%, first hit)",Remote Sensing
-,NonInvSucculentCover_FH,"Non-invasive Succulent Cover  (%, first hit)",Remote Sensing
-,NonInvShrubCover_FH,"Non-invasive Shrub Cover  (%, first hit)",Remote Sensing
-,NonInvSubShrubCover_FH,"Non-invasive Sub-shrub Cover  (%, first hit)",Remote Sensing
-,NonInvTreeCover_FH,"Non-invasive Tree Cover  (%, first hit)",Remote Sensing
-,InvPerenForbCover_FH,"Non-invasive Perennial Forb Cover  (%, first hit)",Remote Sensing
-,InvAnnForbCover_FH,"Invasive Annual Forb Cover  (%, first hit)",Remote Sensing
-,InvPerenGrassCover_FH,"Invasive Perennial Grass Cover  (%, first hit)",Remote Sensing
-,InvAnnGrassCover_FH,"Invasive Annual Grass Cover  (%, first hit)",Remote Sensing
-,InvSucculentCover_FH,"Invasive Succulent Cover  (%, first hit)",Remote Sensing
-,InvShrubCover_FH,"Invasive Shrub Cover  (%, first hit)",Remote Sensing
-,InvSubShrubCover_FH,"Invasive Sub-shrub Cover  (%, first hit)",Remote Sensing
-,InvTreeCover_FH,"Invasive Tree Cover  (%, first hit)",Remote Sensing
-,SageBrushCover_FH,"Sagebrush Cover  (%, first hit)",Remote Sensing
+indicator.tdat,indicator.name,source
+BareSoilCover_FH,Bare Soil (%),Terrestrial AIM
+TotalFoliarCover_FH,Foliar Cover (%),Terrestrial AIM
+GapPct_25_50,Percent in Gaps 25-50 cm,Terrestrial AIM
+GapPct_51_100,Percent in Gaps 51-100 cm,Terrestrial AIM
+GapPct_101_200,Percent in Gaps 101-200 cm,Terrestrial AIM
+GapPct_200_plus,Percent in Gaps > 200 cm,Terrestrial AIM
+GapPct_25_plus,Percent in Gaps > 25 cm,Terrestrial AIM
+NonInvPerenForbCover_AH,"Non-invasive Perennial Forb Cover (%, any hit)",Terrestrial AIM
+NonInvAnnForbCover_AH,"Non-invasive Annual Forb Cover  (%, any hit)",Terrestrial AIM
+NonInvPerenGrassCover_AH,"Non-invasive Perennial Grass Cover  (%, any hit)",Terrestrial AIM
+NonInvAnnGrassCover_AH,"Non-invasive Annual Grass Cover  (%, any hit)",Terrestrial AIM
+NonInvAnnForbGrassCover_AH,"Non-invasive Annual Forb/Grass Cover  (%, any hit)",Terrestrial AIM
+NonInvPerenForbGrassCover_AH,"Non-invasive Perennial Forb/Grass Cover  (%, any hit)",Terrestrial AIM
+NonInvSucculentCover_AH,"Non-invasive Succulent Cover  (%, any hit)",Terrestrial AIM
+NonInvShrubCover_AH,"Non-invasive Shrub Cover  (%, any hit)",Terrestrial AIM
+NonInvSubShrubCover_AH,"Non-invasive Sub-shrub Cover  (%, any hit)",Terrestrial AIM
+NonInvTreeCover_AH,"Non-invasive Tree Cover  (%, any hit)",Terrestrial AIM
+InvPerenForbCover_AH,"Invasive Perennial Forb Cover  (%, any hit)",Terrestrial AIM
+InvAnnForbCover_AH,"Invasive Annual Forb Cover  (%, any hit)",Terrestrial AIM
+InvPerenGrassCover_AH,"Invasive Perennial Grass Cover  (%, any hit)",Terrestrial AIM
+InvAnnGrassCover_AH,"Invasive Annual Grass Cover  (%, any hit)",Terrestrial AIM
+InvAnnForbGrassCover_AH,"Invasive Annual Forb/Grass Cover  (%, any hit)",Terrestrial AIM
+InvPerenForbGrassCover_AH,"Invasive Perennial Forb/Grass Cover  (%, any hit)",Terrestrial AIM
+InvSucculentCover_AH,"Invasive Succulent Cover  (%, any hit)",Terrestrial AIM
+InvShrubCover_AH,"Invasive Shrub Cover  (%, any hit)",Terrestrial AIM
+InvSubShrubCover_AH,"Invasive Sub-shrub Cover  (%, any hit)",Terrestrial AIM
+InvTreeCover_AH,"Invasive Tree Cover  (%, any hit)",Terrestrial AIM
+SagebrushCover_AH,"Sagebrush Cover  (%, any hit)",Terrestrial AIM
+WoodyHgt_Avg,Average Woody Height (cm),Terrestrial AIM
+HerbaceousHgt_Avg,Average Herbaceous Height (cm),Terrestrial AIM
+SagebrushHgt_Avg,Average Sagebrush Height (cm),Terrestrial AIM
+OtherShrubHgt_Avg,Averge Non-Sagebrush Shrub Height (cm),Terrestrial AIM
+NonInvPerenGrassHgt_Avg,Average Non-invasive Perennial Grass Height (cm),Terrestrial AIM
+InvPerenGrassHgt_Avg,Average Invasive Perennial Grass Height (cm),Terrestrial AIM
+InvPlantCover_AH,"Invasive Plant Cover  (%, any hit)",Terrestrial AIM
+InvPlant_NumSp,Number of Invasive Plant Species,Terrestrial AIM
+SoilStability_All,Overall Soil Stability Rating,Terrestrial AIM
+SoilStability_Protected,Protected Surface Soil Stability Rating,Terrestrial AIM
+SoilStability_Unprotected,Unprotected Surface Soil Stability Rating,Terrestrial AIM
+HerbLitterCover_FH,Between-Canopy Herbaceous Litter Cover (%),Remote Sensing
+WoodyLitterCover_FH,Between-Canopy Woody Litter (%),Remote Sensing
+TotalLitterCover_FH,Between-Canopy Herbaceous and Woody Litter (%),Remote Sensing
+RockCover_FH,Between-Canopy Rock Cover (%),Remote Sensing
+BiologicalCrustCover_FH,Between-Canopy Biological Crust Cover (%),Remote Sensing
+VagrLichenCover_FH,Between-Canopy Vagrant Lichen Cover (%),Remote Sensing
+LichenMossCover_FH,Between-Canopy Lichen and Moss Cover (%),Remote Sensing
+DepSoilCover_FH,Between-Canopy Deposited Soil Cover (%),Remote Sensing
+WaterCover_FH,Between-Canopy Water Cover (%),Remote Sensing
+NonInvPerenForbCover_FH,"Non-invasive Perennial Forb Cover (%, first hit)",Remote Sensing
+NonInvAnnForbCover_FH,"Non-invasive Annual Forb Cover  (%, first hit)",Remote Sensing
+NonInvPerenGrassCover_FH,"Non-invasive Perennial Grass Cover  (%, first hit)",Remote Sensing
+NonInvAnnGrassCover_FH,"Non-invasive Annual Grass Cover  (%, first hit)",Remote Sensing
+NonInvSucculentCover_FH,"Non-invasive Succulent Cover  (%, first hit)",Remote Sensing
+NonInvShrubCover_FH,"Non-invasive Shrub Cover  (%, first hit)",Remote Sensing
+NonInvSubShrubCover_FH,"Non-invasive Sub-shrub Cover  (%, first hit)",Remote Sensing
+NonInvTreeCover_FH,"Non-invasive Tree Cover  (%, first hit)",Remote Sensing
+InvPerenForbCover_FH,"Invasive Perennial Forb Cover  (%, first hit)",Remote Sensing
+InvAnnForbCover_FH,"Invasive Annual Forb Cover  (%, first hit)",Remote Sensing
+InvPerenGrassCover_FH,"Invasive Perennial Grass Cover  (%, first hit)",Remote Sensing
+InvAnnGrassCover_FH,"Invasive Annual Grass Cover  (%, first hit)",Remote Sensing
+InvSucculentCover_FH,"Invasive Succulent Cover  (%, first hit)",Remote Sensing
+InvShrubCover_FH,"Invasive Shrub Cover  (%, first hit)",Remote Sensing
+InvSubShrubCover_FH,"Invasive Sub-shrub Cover  (%, first hit)",Remote Sensing
+InvTreeCover_FH,"Invasive Tree Cover  (%, first hit)",Remote Sensing
+SageBrushCover_FH,"Sagebrush Cover  (%, first hit)",Remote Sensing
