@@ -4,50 +4,6 @@ library(rgdal)
 library(tidyr)
 
 ##########################################################
-#### GLOBAL VARIABLES ####
-##########################################################
-## Where is the TerrADat .gdb?
-tdat.path <- paste0(getwd(), "/", "data")
-if (!grepl(x = tdat.path, pattern = "/$")) {
-  tdat.path <- paste0(tdat.path, "/")
-}
-## What is the filename of the TerrADat .gdb?
-tdat.name <- "Terradat_data_8.17.15_complete.gdb"
-## More sanitizing because this needs to be a .gdb file with the extension provided
-if (!grepl(x = benchmarks.filename, pattern = "\\.[Gg][Dd][Bb]$")) {
-  benchmarks.filename <- paste0(benchmarks.filename, ".gdb")
-}
-
-## Where are the indicator lookup table and benchmarks .xlsx?
-data.path <- paste0(getwd(), "/", "data")
-## A bit of sanitization to be safe
-if (!grepl(x = data.path, pattern = "/$")) {
-  data.path <- paste0(data.path, "/")
-}
-## What is the filename of the benchmarks .xlsx 
-benchmarks.filename <- "TerrestrialAIM_DataAnalysis_Template.xlsx"
-## Sanitization because this needs to be an .xlsx file with the extension provided
-if (!grepl(x = benchmarks.filename, pattern = "\\.[Xx][Ll][Ss][Xx]$")) {
-  benchmarks.filename <- paste0(benchmarks.filename, ".xlsx")
-}
-## What is the filename of the indicators lut?
-tdat.indicators.lut.filename <- "tdat_indicator_lut.csv"
-## Santization because this needs to be a .csv file with the extension provided
-if (!grepl(x = tdat.indicators.lut.filename, pattern = "\\.[Cc][Ss][Vv]$")) {
-  tdat.indicators.lut.filename <- paste0(tdat.indicators.lut.filename, ".csv")
-}
-
-## Where will the outputs be written to?
-out.path <- paste0(getwd(), "/", "data")
-## A bit of sanitization to be safe
-if (!grepl(x = out.path, pattern = "/$")) {
-  out.path <- paste0(out.path, "/")
-}
-## What is the project name for this effort. Often [STATE]_FO_[PROJECT], e.g. "CA_ELFO_report"
-project.name <- "NM_TAFO_RGDNNM"
-
-
-##########################################################
 #### FUNCTIONS ####
 ##########################################################
 ## Reading in the benchmarks from the Data Explorer
@@ -93,6 +49,63 @@ read.benchmarks <- function(data.path = "", ## Path to the folder containing the
 parser <- function(string){
   return(eval(parse(text = string)))
 }
+
+## A function to make sure that input strings are correctly formatted for filepaths, .gdb filenames, .xlsx filenames, .csv filenames, and .shp filenames
+sanitizer <- function(string, type){
+  switch(type,
+         filepath = {
+           if (!grepl(x = string, pattern = "/$") & !grepl(x = string, pattern = "\\\\$")) {
+             string <- paste0(string, "/")
+           }
+         },
+         gdb = {
+           if (!grepl(x = string, pattern = "\\.[Gg][Dd][Bb]$")) {
+             string <- paste0(string, ".gdb")
+           }
+         },
+         xlsx = {
+           if (!grepl(x = string, pattern = "\\.[Xx][Ll][Ss][Xx]$")) {
+             string <- paste0(string, ".xlsx")
+           }
+         },
+         csv = {
+           if (!grepl(x = string, pattern = "\\.[Cc][Ss][Vv]$")) {
+             string <- paste0(string, ".csv")
+           }
+         },
+         shp = {
+           if (!grepl(x = string, pattern = "\\.[Ss][Hh][Pp]$")) {
+             string <- paste0(string, ".shp")
+           }
+         }
+  )
+  return(string)
+}
+
+##########################################################
+#### GLOBAL VARIABLES ####
+##########################################################
+## Where is the TerrADat .gdb?
+tdat.path <- paste0(getwd(), "/", "data") %>% sanitizer(type = "filepath")
+
+## What is the filename of the TerrADat .gdb?
+tdat.name <- "Terradat_data_8.17.15_complete.gdb" %>% sanitizer(type = "gdb")
+
+## Where are the indicator lookup table and benchmarks .xlsx?
+data.path <- paste0(getwd(), "/", "data")  %>% sanitizer(type = "filepath")
+
+## What is the filename of the benchmarks .xlsx?
+benchmarks.filename <- "TerrestrialAIM_DataAnalysis_Template.xlsx" %>% sanitizer(type = "xlsx")
+
+## What is the filename of the indicators lut?
+tdat.indicators.lut.filename <- "tdat_indicator_lut.csv" %>% sanitizer(type = "csv")
+
+## Where will the outputs be written to?
+out.path <- paste0(getwd(), "/", "data") %>% sanitizer(type = "filepath")
+
+## What is the project name for this effort. Often [STATE]_FO_[PROJECT], e.g. "CA_ELFO_report"
+project.name <- "NM_TAFO_RGDNNM"
+
 
 ##########################################################
 #### IMPORTING DATA ####
