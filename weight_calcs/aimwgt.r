@@ -6,7 +6,7 @@ library(rgdal)
 library(arcgisbinding)
 arc.check_product()
 library(sp)
-library (dplyr)
+library(dplyr)
 library(maptools)
 library(rgeos)
 library(latticeExtra)
@@ -32,26 +32,29 @@ library(spatialEco)
 
 
 
-##### read working directory, paths, and filenames 
-fpe <- read.table("filenames.txt",header=TRUE,colClasses = "character")
-
-## working directory, src, and destination path
-setwd(fpe$wd) 
-src <-fpe$src		## not currently used?
-output <- fpe$output    ##output shapefile
-
-
+##### read working directory, paths, and filenames
+setwd("u:/aim/geo/lander/")
+src <- "u:/aim/geo/lander/"
+output <- "u:/aim/geo/lander/crap"
+fate <- NULL
+terra <- "aimpts_2015_proj"
+frame <- "landerpolystrata"
+table <- "summary.out"
 
 
 ##### store the frame.  The frame should contain STRATA (e.g., ESDs, BpSs)
-frame.spdf <- readOGR(dsn=".",layer = fpe$frame,stringsAsFactors=FALSE)
+frame.spdf <- readOGR(dsn = ".",
+                      layer = fpe$frame,
+                      stringsAsFactors = F)
 
 
 ##### determine total no. of points by stratum
-if(fpe$fate!="none") {
+if (!is.null(fate)) {
 
    #####Ingest fate of points
-   all.spdf <- readOGR(dsn=".",layer = fpe$fate,stringsAsFactors=FALSE)
+   all.spdf <- readOGR(dsn = ".",
+                       layer = fpe$fate,
+                       stringsAsFactors = F)
 
 
 
@@ -60,12 +63,12 @@ if(fpe$fate!="none") {
 
   pts.poly <- point.in.poly(all.spdf,frame.spdf)  ##(points,polygon)
   n.types <- length(unique(pts.poly$STRATA))
-  a<-c(unique(pts.poly$STRATA))  ##now each pt has a STRATA (ESD OR BpS) type - store the unique types in a[]. need to check/eliminate NA
+  a <- c(unique(pts.poly$STRATA))  ##now each pt has a STRATA (ESD OR BpS) type - store the unique types in a[]. need to check/eliminate NA
 
   ### derive no. of pts in each strata
-  Tpts=NULL
-  for(i in 1:length(unique(pts.poly$STRATA))) {
-    Tpts[i] <- nrow(pts.poly[pts.poly$STRATA==a[i], ]) ##Tpts[i] stores the total no. of pts in stratum=a[i] that were used in this sample event
+  Tpts = NULL
+  for (i in 1:length(unique(pts.poly$STRATA))) {
+    Tpts[i] <- nrow(pts.poly[pts.poly$STRATA == a[i], ]) ##Tpts[i] stores the total no. of pts in stratum=a[i] that were used in this sample event
   }
 
 }
@@ -74,25 +77,27 @@ if(fpe$fate!="none") {
 
 
 #####Ingest data from TerrADAT, and repeat the above count of points by stratum. NOTE: this only works if the number of strata in above analysis is the same as in analysis below?  
-terra.spdf <- readOGR(dsn=".",layer = fpe$terra,stringsAsFactors=FALSE)
+terra.spdf <- readOGR(dsn = ".",
+                      layer = fpe$terra,
+                      stringsAsFactors = F)
 
 
   #### determine intersection of observed pts, and ESD or BpS types
   pts.poly <- point.in.poly(terra.spdf,frame.spdf)  ##(points,polygon)
   n.types <- length(unique(pts.poly$STRATA))
-  a<-c(unique(pts.poly$STRATA))  ##now each pt has a STRATA (ESD.BpS) type - store the unique types in a[]. need to check/eliminate NA
+  a <- c(unique(pts.poly$STRATA))  ##now each pt has a STRATA (ESD.BpS) type - store the unique types in a[]. need to check/eliminate NA
 
   ### derive no. of pts by strata
-  Opts=NULL
-  for(i in 1:length(unique(pts.poly$STRATA))) {
-    Opts[i] <- nrow(pts.poly[pts.poly$STRATA==a[i], ])  ##Opts[i] stores the observed no. of pts in stratum=a[i] 
+  Opts = NULL
+  for (i in 1:length(unique(pts.poly$STRATA))) {
+    Opts[i] <- nrow(pts.poly[pts.poly$STRATA == a[i],])  ##Opts[i] stores the observed no. of pts in stratum=a[i] 
   }
 
 
 ##### We may not have the fate of points in all cases.  if fate==none, then set b[] to c[] for correct calulcation of adjusted weights in the next step
-  if(fpe$fate=="none") {
-	Tpts=NULL
-        for(i in 1:length(unique(pts.poly$STRATA))) {
+  if (is.null(fate)) {
+	Tpts = NULL
+        for (i in 1:length(unique(pts.poly$STRATA))) {
     		Tpts[i] <- Opts[i] 
   	}
   }
@@ -101,8 +106,8 @@ terra.spdf <- readOGR(dsn=".",layer = fpe$terra,stringsAsFactors=FALSE)
 
 
 #####Derive adjustment of stratum area -i.e., the proportion of stratum area that was actually sampled.   
-  Pprop<- NULL
-  for(i in 1:length(unique(pts.poly$STRATA))) {
+  Pprop <- NULL
+  for (i in 1:length(unique(pts.poly$STRATA))) {
     Pprop[i] <- Opts[i]/ Tpts[i]  ##Tpts[i] is the total no. of points by stratum; Opts[i] stores the observed no. of pts in stratum=a[i]. 
   } 
 ## Pprop[i] stores the proportion of stratum area that was actually sampled (1-nonresponses effect)
@@ -133,8 +138,8 @@ terra.spdf <- readOGR(dsn=".",layer = fpe$terra,stringsAsFactors=FALSE)
     pts.poly@data$weight<-NULL
 
 
-    for(i in 1:length(unique(pts.poly$STRATA))) {
-      	 pts.poly$weight[pts.poly$STRATA==a[i]] = wgt[i]
+    for (i in 1:length(unique(pts.poly$STRATA))) {
+      	 pts.poly$weight[pts.poly$STRATA == a[i]] = wgt[i]
     }
 
 
@@ -144,7 +149,7 @@ terra.spdf <- readOGR(dsn=".",layer = fpe$terra,stringsAsFactors=FALSE)
 
 
 ##### summarize and output results
-      summary<- NULL
+      summary <- NULL
       ## STRATA label, total pts, observed pts, sampled area as a proportion, total area, actual sampled area, weight
       summary <- data.frame(c(a[1:n.types]),Tpts[1:n.types],Opts[1:n.types],Pprop[1:n.types],area[1:n.types],Sarea[1:n.types],wgt[1:n.types])
       write.table(summary,fpe$table)
