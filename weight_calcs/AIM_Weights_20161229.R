@@ -51,6 +51,132 @@ sanitizer <- function(string, type){
   return(string)
 }
 
+## Reads in SDDs. Returns a named list of lists of SPDFs: sf, pts, strata.
+## sf is a list of sample frame SPDFs, pts is a list of point SPDFs, strata is a list of stratfication SPDFs
+## The SPDFs are all named using the SDD filename provided in sdd.src so that output$sf$generic_design.gdb has the sample frame that corresponds to output$pts$generic_design.gdb
+## The index order is maintained as well, so output[1][1] and output[2][1] correspond to each other.
+## If a feature class couldn't be found, there will be a NULL instead of SPDF for that SDD in the list
+sdd.reader <- function(src = "", ## A filepath as a string
+                       sdd.src, ## A character string or vector of character strings with the filename[s] for the relevant .gdb in the filepath src
+                       func = "arcgisbinding", ## This can be "readOGR" or "arcgisbinding" depending on which you prefer to or can use
+                       projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83 projection
+){
+  
+  ## readOGR() wrapped in safely() so that it will return NULL instead of an error. I need this for the function
+  safe.readOGR <- safely(readOGR, otherwise = NULL)
+  
+  ## Sanitization
+  func <- str_to_upper(func)
+  
+  ## Checking that func is a valid value
+  if (!(func %in% c("ARCGISBINDING", "READOGR"))) {
+    print("The argument func needs to be 'arcgisbinding' or 'readOGR'")
+  }
+  
+  ## Only keeping the SDD filenames that actually exist in the src filepath provided
+  sdd.src.exist <- sdd.src[sdd.src %in% list.files(path = src)]
+  
+  if (length(sdd.src) != length(sdd.src.exist))
+  print(paste0("Couldn't find the following .gdb[s]: ", paste(sdd.src[!(sdd.src %in% list.files(path = src))], collapse = ", ")))
+  
+  ## TODO: Use the argument func to switch() between arcgisbinding and readOGR() for all imports
+  switch(func,
+         READOGR = {
+           ## Looped so that it can execute across all the SDDs in the vector (if there are more than one)
+           for (s in sdd.src.exist) {
+             ## Read in the sample frame feature class inside the current SDD.
+             sf <- safe.readOGR(dsn = paste(src, s, sep = "/"),
+                                layer = "Terra_Sample_Frame",
+                                stringsAsFactors = F)[[1]] ## The [[]] is to get the SPDF (or NULL) out of the list returned by the safely()
+             # The spTransform() is just to be safe, but probably isn't necessary
+             if (!is.null(sf)) {
+               sf <- spTransform(sf, projection)
+             }
+             ## Stores the current sf SPDF with the name sf.[SDD name]
+             assign(x = paste("sf", s, sep = "."), value = sf)
+             
+             #Read in the Strata
+             strata <- safe.readOGR(dsn = paste(src, s, sep = "/"),
+                                    layer = "Terra_Strtfctn",
+                                    stringsAsFactors = F)[[1]]
+             if (!is.null(strata)) {
+               strata <- spTransform(strata, projection)
+             }
+             assign(x = paste("strata", s, sep = "."), value = strata)
+             
+             #Read in the Points
+             points <- safe.readOGR(dsn = paste(src, s, sep = "/"),
+                                    layer = "Terra_Sample_Points",
+                                    stringsAsFactors = F)[[1]]
+             if (!is.null(points)) {
+               points <- spTransform(points, projection)
+             }
+             assign(x = paste("pts", s, sep = "."), value = points)
+           }
+         },
+         ARCGISBINDING = {
+           for (s in sdd.src.exist) {
+             ## Identify/create the filepath to the sample frame feature class inside the current SDD
+             sf <- paste(src, s, "Terra_Sample_Frame", sep = "/")
+             ## For each SDD listed, creates an SPDF with the name sf.[SDD name] using the filepath to that feature class
+             assign(x = paste("sf", s, sep = "."),
+                    value = sf %>% arc.open() %>% arc.select %>%
+                      SpatialPolygonsDataFrame(Sr = {arc.shape(.) %>% arc.shape2sp()}, data = .)
+             )
+             
+             #Read in the Strata
+             #first check for strata
+             ## Identify/create the filepath to the design stratification feature class inside the current SDD
+             strata <- paste(src, s, "Terra_Strtfctn", sep = "/")
+             #this loads enough of the feature class to tell if there are strata
+             strata <- strata %>% arc.open() %>% arc.select
+             #check for strata, if there are, then we will finish loading the file. 
+             if (nrow(strata) > 0) {
+               ## Identify/create the filepath to the design stratification feature class inside the current SDD
+               strata <- paste(src, s, "Terra_Strtfctn", sep = "/")
+               ## Creates an SPDF with the name strat.[SDD name] using the filepath to that feature class
+               assign(x = paste("strata", s, sep = "."),
+                      value = strata %>% arc.open() %>% arc.select %>%
+                        SpatialPolygonsDataFrame(Sr = {arc.shape(.) %>% arc.shape2sp()},
+                                                 data = .))
+               
+             } else {
+               assign(x = paste("strata", s, sep = "."),
+                      value = NULL)
+             }
+             
+             #Read in the Points
+             ## Identify/create the filepath to the design points feature class inside the current SDD
+             pts <- paste(src, s, "Terra_Sample_Points", sep = "/")
+             ## Creates an SPDF with the name pts.[SDD name] using the filepath to that feature class
+             assign(x = paste("pts", s, sep = "."),
+                    value = pts %>% arc.open() %>% arc.select %>%
+                      #read in the feature class, notice the difference between Polygons and points (different function with different arguments needs)
+                      SpatialPointsDataFrame(coords = {arc.shape(.) %>% arc.shape2sp()}))
+           }
+         }
+  )
+  
+  ## Create a list of the sample frame SPDFs.
+  ## This programmatically create a string of the existing object names that start with "sf." separated by commas
+  ## then wraps that in "list()" and runs the whole string through parse() and eval() to execute it
+  sf.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = ", "), ")")))
+  ## Rename them with the correct SDD name because they'll be in the same order that ls() returned them earlier. Also, we need to remove sf.list itself
+  names(sf.list) <- ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")]
+  
+  ## Creating the named list of all the pts SPDFs created by the loop
+  pts.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
+  names(pts.list) <- ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")]
+  
+  ## Creating the named list of all the strata SPDFs created by the loop
+  strata.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
+  names(strata.list) <- ls()[grepl(x = ls(), pattern = "^strata\\.") & !grepl(x = ls(), pattern = "^strata.list$")]
+  
+  output <- list(sf = sf.list, pts = pts.list, strata = strata.list)
+  
+  return(output)
+}
+
 ##########################################################
 #### GLOBAL VARIABLES ####
 ##########################################################
@@ -89,72 +215,9 @@ out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Projec
 #### IMPORTING DATA ####
 ##########################################################
 #### Step 1: Read in Files#####
-###First, the SDDs#### 
 
-## Reads in SDDs. Returns a named list of lists of SPDFs: sf, pts, strata.
-## sf is a list of sample frame SPDFs, pts is a list of point SPDFs, strata is a list of stratfication SPDFs
-## The SPDFs are all named using the SDD filename provided in sdd.src so that output$sf$generic_design.gdb has the sample frame that corresponds to output$pts$generic_design.gdb
-## The index order is maintained as well, so output[1][1] and output[2][1] correspond to each other.
-## If a feature class couldn't be found, there will be a NULL instead of SPDF for that SDD in the list
-sdd.reader <- function(src = "", ## A filepath as a string
-                       sdd.src, ## A character string or vector of character strings with the filename[s] for the relevant .gdb in the filepath src
-                       projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83 projection
-                       ){
-  
-  ## readOGR() wrapped in safely() so that it will return NULL instead of an error. I need this for the function
-  safe.readOGR <- safely(readOGR, otherwise = NULL)
-  
-  
-  ## Looped so that it can execute across all the SDDs in the vector (if there are more than one)
-  for (s in sdd.src) {
-    ## Read in the sample frame feature class inside the current SDD.
-    sf <- safe.readOGR(dsn = paste(src, s, sep = "/"),
-                  layer = "Terra_Sample_Frame",
-                  stringsAsFactors = F)[[1]] ## The [[]] is to get the SPDF (or NULL) out of the list returned by the safely()
-    # The spTransform() is just to be safe, but probably isn't necessary
-    if (!is.null(sf)) {
-      sf <- spTransform(sf, projection)
-    }
-    ## Stores the current sf SPDF with the name sf.[SDD name]
-    assign(x = paste("sf", s, sep = "."), value = sf)
-    
-    #Read in the Strata
-    strata <- safe.readOGR(dsn = paste(src, s, sep = "/"),
-                  layer = "Terra_Strtfctn",
-                  stringsAsFactors = F)[[1]]
-    if (!is.null(strata)) {
-      strata <- spTransform(strata, projection)
-    }
-    assign(x = paste("strata", s, sep = "."), value = strata)
-    
-    #Read in the Points
-    points <- safe.readOGR(dsn = paste(src, s, sep = "/"),
-                           layer = "Terra_Sample_Points",
-                           stringsAsFactors = F)[[1]]
-    if (!is.null(points)) {
-      points <- spTransform(points, projection)
-    }
-    assign(x = paste("pts", s, sep = "."), value = points)
-  }
-  ## Create a list of the sample frame SPDFs.
-  ## This programmatically create a string of the existing object names that start with "sf." separated by commas
-  ## then wraps that in "list()" and runs the whole string through parse() and eval() to execute it
-  sf.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = ", "), ")")))
-  ## Rename them with the correct SDD name because they'll be in the same order that ls() returned them earlier. Also, we need to remove sf.list itself
-  names(sf.list) <- ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")]
-  
-  ## Creating the named list of all the pts SPDFs created by the loop
-  pts.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
-  names(pts.list) <- ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")]
-  
-  ## Creating the named list of all the strata SPDFs created by the loop
-  strata.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
-  names(strata.list) <- ls()[grepl(x = ls(), pattern = "^strata\\.") & !grepl(x = ls(), pattern = "^strata.list$")]
-  
-  output <- list(sf = sf.list, pts = pts.list, strata = strata.list)
-  
-  return(output)
-}
+###First, the SDDs#### 
+sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb", "SDD_NorCal_2013extensive_SDD.gdb"))
 
 ###Then the Reporting Units###
 for (r in reporting.unit.src) {
