@@ -167,6 +167,21 @@ sdd.reader <- function(src = "", ## A filepath as a string
   return(output)
 }
 
+## Currently uncalled
+# ## A function for clipping polygons
+# gClip <- function(frame, ## SpatialPolygonsDataFrame to be clipped
+#                   clip ## SpatialPolygonsDataFrame defining the extent to clip to
+#                   ) {
+#   clipped <- gIntersection(frame, clip, byid = T)
+#   row.names(clipped) <- as.character(gsub(" 0", "", row.names(clipped)))
+#   return(SpatialPolygonsDataFrame(clipped, frame@data[row.names(clipped), ]))
+# }
+# 
+# ## A function for removing polygons. NB: This is quite slow right now
+# gErase <- function(frame,erase) {
+#   gDifference(frame, erase)
+# }
+
 ##########################################################
 #### GLOBAL VARIABLES ####
 ##########################################################
