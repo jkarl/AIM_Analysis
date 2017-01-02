@@ -207,10 +207,10 @@ reporting.unit.src <- c("Eagle_Lake_FO.shp",
 
 ###Set Output Files####
 ## Set the filepath for the output file. Use the first line if it's not a subdirectory of the working directory
-# out.src <- "C:\\Users\\samccord\\Documents\\AIM\\Projects\\NorCal\\" 
-out.src <- paste0(getwd(), "/",
-                  "data" ## This is the subdirectory path. It can be multiple layers deep, e.g. "data/norcal/test_set"
-                  ) %>% sanitizer(type = "filepath")
+out.src <- "data" %>% sanitizer(type = "filepath")
+## If out.src is a subdirectory path within the working directory, follow the previous line with this.
+## If out.src is a full filepath in its own right, comment it out
+out.src <- paste0(getwd(), "/", out.src)
 
 out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Project
 
