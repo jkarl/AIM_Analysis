@@ -8,6 +8,7 @@ arc.check_product()
 library(maptools) #this is for reading in shapefiles
 library(rgdal) # for read in rasters
 library(rgeos)
+library(stringr)
 
 ## A function to make sure that input strings are correctly formatted for filepaths, .gdb filenames, .xlsx filenames, .csv filenames, and .shp filenames
 sanitizer <- function(string, type){
