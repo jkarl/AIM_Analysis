@@ -1,15 +1,6 @@
 #####################################################################
 #### CALCULATING WEIGHTS USING SAMPLE DESIGN DATABASES AND TERRADAT ####
-## Reads in SDDs and reporting unit shapefiles
-
-## attribute.shapefile() adds from a specified field in a shapefile, either points or polygons
-## attribute.list() adds based on a simple lookup table of PlotID and Evaluation.Stratum
-## attribute.field() adds from a lookup table based on values found in the fields of the points fed to it
 #####################################################################
-#12/21/2016
-#
-
-
 #####load packages####
 library(tidyverse)
 library(arcgisbinding) #we use this package to read from file geodatabases--it is significantly faster than rOGDB
@@ -17,7 +8,6 @@ arc.check_product()
 library(maptools) #this is for reading in shapefiles
 library(rgdal) # for read in rasters
 library(rgeos)
-library(purrr) ## To wrap functions in to create default values to return when there are errors instead of just failing
 
 ## A function to make sure that input strings are correctly formatted for filepaths, .gdb filenames, .xlsx filenames, .csv filenames, and .shp filenames
 sanitizer <- function(string, type){
@@ -54,7 +44,7 @@ sanitizer <- function(string, type){
 ## Reads in SDDs. Returns a named list of lists of SPDFs: sf, pts, strata.
 ## sf is a list of sample frame SPDFs, pts is a list of point SPDFs, strata is a list of stratfication SPDFs
 ## The SPDFs are all named using the SDD filename provided in sdd.src so that output$sf$generic_design.gdb has the sample frame that corresponds to output$pts$generic_design.gdb
-## The index order is maintained as well, so output[1][1] and output[2][1] correspond to each other.
+## The index order is maintained as well, so output[1][1] and output[2][1] correspond to the same SDD source
 ## If a feature class couldn't be found, there will be a NULL instead of SPDF for that SDD in the list
 sdd.reader <- function(src = "", ## A filepath as a string
                        sdd.src, ## A character string or vector of character strings with the filename[s] for the relevant .gdb in the filepath src
@@ -79,7 +69,6 @@ sdd.reader <- function(src = "", ## A filepath as a string
   if (length(sdd.src) != length(sdd.src.exist))
   print(paste0("Couldn't find the following .gdb[s]: ", paste(sdd.src[!(sdd.src %in% list.files(path = src))], collapse = ", ")))
   
-  ## TODO: Use the argument func to switch() between arcgisbinding and readOGR() for all imports
   switch(func,
          READOGR = {
            ## Looped so that it can execute across all the SDDs in the vector (if there are more than one)
@@ -118,7 +107,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
            for (s in sdd.src.exist) {
              ## Identify/create the filepath to the sample frame feature class inside the current SDD
              sf <- paste(src, s, "Terra_Sample_Frame", sep = "/")
-             ## For each SDD listed, creates an SPDF with the name sf.[SDD name] using the filepath to that feature class
+             ## Creates an SPDF with the name sf.[SDD name] using the filepath to that feature class
              assign(x = paste("sf", s, sep = "."),
                     value = sf %>% arc.open() %>% arc.select %>%
                       SpatialPolygonsDataFrame(Sr = {arc.shape(.) %>% arc.shape2sp()}, data = .)
@@ -141,6 +130,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
                                                  data = .))
                
              } else {
+               ## If the stratification feature class is empty, we'll just save ourselves some pain and store NULL
                assign(x = paste("strata", s, sep = "."),
                       value = NULL)
              }
@@ -159,7 +149,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
   
   ## Create a list of the sample frame SPDFs.
   ## This programmatically create a string of the existing object names that start with "sf." separated by commas
-  ## then wraps that in "list()" and runs the whole string through parse() and eval() to execute it
+  ## then wraps that in "list()" and runs the whole string through parse() and eval() to execute it, creating a list from those SPDFs
   sf.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = ", "), ")")))
   ## Rename them with the correct SDD name because they'll be in the same order that ls() returned them earlier. Also, we need to remove sf.list itself
   names(sf.list) <- ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")]
@@ -234,9 +224,6 @@ for (r in reporting.unit.src) {
 ##########################################################
 ###Step 2: Create Weight Categories
 
-#Step 2a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
-#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strat."
-    ###-->Jason
 
 #Step 2b: Intersect each sample frame polygon with each reporting unit to determine a) if they overlap and b) if one is contained within the other
 #I haven't figured out how to determine the overlapping order automatically, yet. So at this point it is a manual step to figure out overlapping designs
@@ -255,7 +242,6 @@ for (r in reporting.unit.src) {
 ##########################################################
 #### CALCULATE WEIGHTS ####
 ##########################################################
-###Step 3: Calculate the area of each weight category
 
 ###Step 4 Calculate # points in each weight category, use the SDD pts but verify that all TerrADat points are accounted for
 
@@ -271,13 +257,13 @@ for (r in reporting.unit.src) {
 
 ### Step 7: Write output
 ###write out results, field names should be: 
-  #PrimaryKey(from SDD), 
-  #PlotID.SDD (from SDD), 
-  #FINAL_DESIG (from SDD, no not a typo), this is the point fate
-  #Reporting Unit (from intersection)
-  #Wgt.Category (from intersection), should be of the form ReportingUnit_Stratum/MDCaty
-  #Wgt
-  #PlotID.TDAT (PlotID from TerrADat)
+#PrimaryKey(from SDD), 
+#PlotID.SDD (from SDD), 
+#FINAL_DESIG (from SDD, no not a typo), this is the point fate
+#Reporting Unit (from intersection)
+#Wgt.Category (from intersection), should be of the form ReportingUnit_Stratum/MDCaty
+#Wgt
+#PlotID.TDAT (PlotID from TerrADat)
 
 
 write.csv(wgt.df, file = paste0(out.src, out.filename, "_wgt_", Sys.Date()))
