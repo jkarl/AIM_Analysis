@@ -42,6 +42,7 @@ sanitizer <- function(string, type){
   return(string)
 }
 
+## TODO: Should try to handle raster location/import either within sdd.reader() or as an independent function
 ## Reads in SDDs. Returns a named list of lists of SPDFs: sf, pts, strata.
 ## sf is a list of sample frame SPDFs, pts is a list of point SPDFs, strata is a list of stratfication SPDFs
 ## The SPDFs are all named using the SDD filename provided in sdd.src so that output$sf$generic_design.gdb has the sample frame that corresponds to output$pts$generic_design.gdb
@@ -225,7 +226,11 @@ out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Projec
 #### Step 1: Read in Files#####
 
 ###First, the SDDs#### 
-sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb", "SDD_NorCal_2013extensive_SDD.gdb"))
+sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb"))
+
+#Step 1a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
+#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strata."
+###-->Jason
 
 ###Then the Reporting Units###
 for (r in reporting.unit.src) {
