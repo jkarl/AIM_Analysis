@@ -67,8 +67,10 @@ sdd.reader <- function(src = "", ## A filepath as a string
   ## Only keeping the SDD filenames that actually exist in the src filepath provided
   sdd.src.exist <- sdd.src[sdd.src %in% list.files(path = src)]
   
-  if (length(sdd.src) != length(sdd.src.exist))
-  print(paste0("Couldn't find the following .gdb[s]: ", paste(sdd.src[!(sdd.src %in% list.files(path = src))], collapse = ", ")))
+  ## Reporting the filenames it couldn't find in the folder
+  if (length(sdd.src) != length(sdd.src.exist)) {
+    print(paste0("Couldn't find the following .gdb[s]: ", paste(sdd.src[!(sdd.src %in% list.files(path = src))], collapse = ", "))) 
+  }
   
   switch(func,
          READOGR = {
