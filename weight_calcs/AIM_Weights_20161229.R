@@ -242,6 +242,228 @@ for (r in reporting.unit.src) {
 ##########################################################
 #### CALCULATE WEIGHTS ####
 ##########################################################
+## and so begins Garman's folly
+## Step 3.  Cycle thru all the SDDs and generate pt weight estimates for each separately.  We'll deal with other weightings 
+##          (e.g., a FO, overlapping designs) in subsequent steps.
+
+
+## For each SDD sample frame (specified in sdd.src), adjust the sampled area (account for non-responses), generate weights,
+## update the pts file with weights, tabulate area and pt information (this table is a quick summary for internal purposes),
+## & generate the .csv file with attributes listed in Step 7 below. 
+
+
+## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
+weighter <- function(sdd.import, ## The output from sdd.reader()
+                     tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
+                     ## Assumes the following keywords are sufficient and consistent.
+                     ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
+                     target.values = c("Target Sampled"),
+                     unknown.values = c("Unknown",
+                                        "UNK",
+                                        NA),
+                     nontarget.values = c("Non-Target",
+                                          "NT"),
+                     ## These shouldn't need to be changed from these defaults, but better to add that functionality now than regret not having it later
+                     fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
+                     pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
+                     designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
+){
+  
+  ## Initialize data frame for stratum info. The results from each loop end up bound to this
+  master.df <- NULL
+  ## Initialize list for point weight info. The results from each loop end up added to this
+  ## In the end, these will all be joined to TerrADat and stripped down to the bare essentials to report out
+  pointweights.df <- NULL
+  
+  ## The fate values that we know about are hardcoded here.
+  ## Whatever values are provided in the function arguments get concatenated and then we keep only the unique values from that result
+  target.values <- c(target.values,
+                     "Target Sampled") %>% unique()
+  unknown.values <- c(unknown.values,
+                      "Unknown",
+                      "UNK",
+                      NA) %>% unique()
+  nontarget.values <- c(nontarget.values,
+                        "Non-Target",
+                        "NT") %>% unique()
+  
+  ## for each sample frame...
+  for (s in names(sdd.import$sf)) {
+    
+    ## get the pts file in sdd.src that corresponds to s and call it pts.spdf, then create and init the wgts attribute
+    pts.spdf <- sdd.import$pts[[s]]
+    pts.spdf@data$wgts <- 0
+    
+    ## based on FINAL_DESIG, get the no. of pts sampled and the nonresponses.  
+    ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. wgts for nonresponse categories,
+    ## so having nontarget and unk N's may be useful down the road.
+    target.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% target.values,])
+    unknown.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% unknown.values,])
+    nontarget.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% nontarget.values,])
+    
+    ## How many points had fate values that were found in fate vectors?
+    sum <- target.count + unknown.count + nontarget.count
+    
+    ## Let the user know what the 'bad fates' are that need to be added
+    if (sum != nrow(pts.spdf)) {
+      print("The following fate[s] need to be added to the appropriate fate argument[s] in your function call:")
+      ## Take the vector of all the unique values in pts.spdf$final_desig (or another fate field) that aren't found in the fate vectors and collapse it into a single string, separated by ", "
+      print(paste(unique(pts.spdf@data[, fatefieldname])[!(unique(pts.spdf@data[, fatefieldname]) %in% c(target.values, unknown.values, nontarget.values))], collapse = ", "))
+    }
+    
+    ##TODO - The grep(..strata) evaluation will need to be modified to evaluate for a polygon OR a raster df
+    ## If the value for the current SDD in the list strata is not NULL, then we have a strata SPDF
+    if (!is.null(sdd.import$strata[[s]])) {
+      ## since we have stratification, use Design Stratum attribute to determine the number of stratum, tally the extent of each stratum,
+      ## then tally the no. of pts by stratum
+      designstrata <- unique(pts.spdf@data[, pointstratumfieldname])
+      
+      ## Get the stratum SPDF for this SDD (i.e., s), and call it strata.spdf
+      strata.spdf <- sdd.import$strata[[s]]
+      
+      ## Intialize a vector called area to store the area values in hectares, named by the stratum
+      area <- NULL
+      
+      ## Use recorded area of each stratum if present; else derive areas
+      if (length(strata.spdf$strtm_area_sqkm) > 0) {
+        ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
+        for (j in designstrata) {
+          area[j] = (strata.spdf$strtm_area_sqkm[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
+        }
+      } else {
+        ## the following gArea is efficient when polygons are listed separately in the shapefile; otherwise, this can take
+        ## an inordinate amount of time (at least on BLM's toy computers).  Also, need to verify the ha conversion (this worked on an example, but
+        ## not sure this is a global solution for the SDD files!)
+        strata.spdf@data$hectares <- (gArea(strata.spdf, byid = T) * 0.0001)  ## derive ha of each polygon - 0.0001 converts from m2 to ha
+        for (j in designstrata) {
+          area[j] <- sum(strata.spdf$hectares[strata.spdf@data[, designstratumfield] == j])
+        }
+      }
+      
+      ## no. pts by stratum
+      ## This creates two named-by-fate-value vectors: Tpts (contains the number of points in each fate value) and Opts (contains the number of points for each TARGET fate value)
+      for (j in designstrata) {
+        Tpts <- NULL # total pts
+        Opts <- NULL ## observed pts - i.e., sampled pts 
+        for (k in c(target.values, nontarget.values, unknown.values)) {
+          ## Get the number of points in the stratum that have the current fate
+          Tpts[k] <- nrow(pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] == k ,])
+          if (k %in% target.values) {
+            Opts <- Tpts[k] ## Storing any target point counts in their own vector
+          }
+        }
+        
+        
+        ## derive adjusted wgt for stratum j
+        sigma <- sum(Tpts) # total number of pts within the spatial extent of stratum j
+        Pprop <- 1 # initialize - proportion of 1.0 means there were no nonresponses
+        wgt <- 0 ## initialize wgt
+        Sarea <- 0 ## initialize actual sampled area
+        
+        if (sigma > 0) {
+          Pprop <- Opts/sigma	## realized proportion of the stratum that was sampled (observed/total no. of points) 
+        }
+        if (Opts > 0) {
+          wgt   <- (Pprop*area[j])/Opts  ## (The proportion of the total area that was sampled * total area [ha]) divided by the no. of observed points
+          Sarea <-  Pprop*area[j] ## Record the actual area(ha) sampled - (proportional reduction * stratum area)
+        }
+        
+        ##Tabulate key information for this SDD, by stratum (j)  
+        temp.df <- NULL
+        temp.df <- data.frame(SDD = s,
+                              Stratum = j,
+                              Total.pts = sigma,
+                              Observed.pts = Opts,
+                              Area.HA = area[j],
+                              Prop.dsgn.pts.obsrvd = Pprop,
+                              Sampled.area.HA = Sarea,
+                              Weight = wgt,
+                              stringsAsFactors = F)
+        ## Bind this stratum's information to the master.df initialized outside and before the loop started
+        master.df <- rbind(master.df, temp.df)  ## pile it on.....
+        
+        
+        ## store weights for the stratum j observed pts
+        ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
+        ## If a point had a target fate, assign the calculates weight
+        pts.spdf$wgts[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+        ## If a point had a non-target or unknown designation, assign 0 as the weight
+        ##wgts init to zero, but these 2 lines are to make sure we record 0
+        pts.spdf$wgts[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+        ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
+        pointweights.df <- rbind(pointweights.df, pts.spdf@data)
+      }## endof for (j in designstrata)
+      
+      ## init re-used SPDFs
+      pts.spdf <- NULL
+      strata.spdf < -NULL
+    } else { ## If there aren't strata available to us in a useful format in the SDD, we'll just weight by the sample frame
+      ## since we lack stratification, use the sample frame to derive spatial extent (ha)
+      sf.spdf <- sdd.import$sf[[s]]
+      area <- (sf.spdf$SAMPLE_FRAME_AREA_SQKM) * 100		## *100 to convert from km to ha. The "SAMPLE_FRAME_AREA.." is specific to sample frames, stratification
+      ##  files have a different name for pre-calculated area (see above)
+      
+      
+      ## derive weights
+      Pprop <- 1			## initialize - proportion of 1.0 means there were no nonresponses
+      wgt <- 0			## initialize wgt
+      Sarea <- 0			## initialize actual sampled area
+      if (sum > 0) {
+        Pprop <- target.count/sum ## realized proportion of the stratum that was sampled (observed/total no. of points)
+      }
+      if (target.count > 0) {
+        wgt   <- (Pprop*area)/target.count  ## (The proportion of the total area that was sampled * total area [ha]) divided by the no. of observed points
+        Sarea <-  Pprop*area	      ## Record the actual area(ha) sampled - (proportional reduction * stratum area)
+      }
+      
+      ##Tabulate key information for this SDD, by stratum (j)  
+      temp.df <- NULL
+      temp.df <- data.frame(SDD = s,
+                            Stratum = "Sample Frame",
+                            Total.pts = sum,
+                            Observed.pts = target.count,
+                            Area.HA = area,
+                            Prop.dsgn.pts.obsrvd = Pprop,
+                            Sampled.area.HA = Sarea,
+                            Weight = wgt,
+                            stringsAsFactors = F)
+      ## Bind this stratum's information to the master.df initialized outside and before the loop started
+      master.df <- rbind(master.df, temp.df)  ## pile it on.....
+      
+      
+      ## store weights for the stratum j observed pts
+      ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
+      ## If a point had a target fate, assign the calculates weight
+      pts.spdf$wgts[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+      ## If a point had a non-target or unknown designation, assign 0 as the weight
+      ##wgts init to zero, but these 2 lines are to make sure we record 0
+      pts.spdf$wgts[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+      
+      ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
+      pointweights.df <- rbind(pointweights.df, pts.spdf@data)
+      
+      ## init re-used SPDFs
+      pts.spdf <- NULL		
+      sf.spdf <- NULL
+      
+    }## endof if no stratification
+  }  ## endof for(s in sdd.src )
+  
+  ## Adding in the TerrADat attributes because we need those primary keys
+  pointweights.df.merged <- merge(x = pts.combined, y = tdat, by.x = c("plot_key"), by.y = "PlotKey", all = F)
+  
+  ## Diagnostics in case something goes pear-shaped
+  print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
+  print(paste(pts.combined$PlotID[!(unique(pts.combined$PlotID) %in% unique(pts.combined.merged$PlotID))], collapse = ", "))
+  
+  
+  ## Output is a named list with two data frames: information about the strata and information about the points
+  return(list(strata.weights = master.df, point.weights[, c("PrimaryKey", "PlotID", "final_desig", "wgts")]))
+}
+
+
+
 
 ###Step 4 Calculate # points in each weight category, use the SDD pts but verify that all TerrADat points are accounted for
 
