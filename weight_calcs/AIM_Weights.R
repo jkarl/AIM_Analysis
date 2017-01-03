@@ -159,16 +159,16 @@ sdd.reader <- function(src = "", ## A filepath as a string
   ## Create a list of the sample frame SPDFs.
   ## This programmatically create a string of the existing object names that start with "sf." separated by commas
   ## then wraps that in "list()" and runs the whole string through parse() and eval() to execute it, creating a list from those SPDFs
-  sf.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = ", "), ")")))
+  sf.list <- parser(string = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = ", "), ")"))
   ## Rename them with the correct SDD name because they'll be in the same order that ls() returned them earlier. Also, we need to remove sf.list itself
   names(sf.list) <- ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")] %>% str_replace(pattern = "^sf\\.", replacement = "")
   
   ## Creating the named list of all the pts SPDFs created by the loop
-  pts.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
+  pts.list <- parser(string = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")"))
   names(pts.list) <- ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")] %>% str_replace(pattern = "^pts\\.", replacement = "")
   
   ## Creating the named list of all the strata SPDFs created by the loop
-  strata.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
+  strata.list <- parser(string = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")"))
   names(strata.list) <- ls()[grepl(x = ls(), pattern = "^strata\\.") & !grepl(x = ls(), pattern = "^strata.list$")] %>% str_replace(pattern = "^strata\\.", replacement = "")
   
   output <- list(sf = sf.list, pts = pts.list, strata = strata.list)
