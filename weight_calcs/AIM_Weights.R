@@ -321,7 +321,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     
     ## get the pts file in sdd.src that corresponds to s and call it pts.spdf, then create and init the wgts attribute
     pts.spdf <- sdd.import$pts[[s]]
-    pts.spdf@data$wgts <- 0
+    pts.spdf@data$wgt <- 0
     
     ## based on FINAL_DESIG, get the no. of pts sampled and the nonresponses.  
     ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. wgts for nonresponse categories,
@@ -415,10 +415,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         ## store weights for the stratum j observed pts
         ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
         ## If a point had a target fate, assign the calculates weight
-        pts.spdf$wgts[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+        pts.spdf$wgt[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
         ## If a point had a non-target or unknown designation, assign 0 as the weight
         ##wgts init to zero, but these 2 lines are to make sure we record 0
-        pts.spdf$wgts[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+        pts.spdf$wgt[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
         ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
         pointweights.df <- rbind(pointweights.df, pts.spdf@data)
       }## endof for (j in designstrata)
@@ -463,10 +463,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## store weights for the stratum j observed pts
       ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
       ## If a point had a target fate, assign the calculates weight
-      pts.spdf$wgts[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+      pts.spdf$wgt[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
       ## If a point had a non-target or unknown designation, assign 0 as the weight
       ##wgts init to zero, but these 2 lines are to make sure we record 0
-      pts.spdf$wgts[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+      pts.spdf$wgt[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
       
       ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
       pointweights.df <- rbind(pointweights.df, pts.spdf@data)
@@ -487,7 +487,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   
   
   ## Output is a named list with two data frames: information about the strata and information about the points
-  return(list(strata.weights = master.df, point.weights[, c("PrimaryKey", "PlotID", "final_desig", "wgts")]))
+  return(list(strata.weights = master.df, point.weights[, c("PrimaryKey", "PlotID", "final_desig", "wgt", "Longitude", "Latitude")]))
 }
 
 
