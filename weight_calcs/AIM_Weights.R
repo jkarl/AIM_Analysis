@@ -176,113 +176,12 @@ sdd.reader <- function(src = "", ## A filepath as a string
   return(output)
 }
 
-## Currently uncalled
-# ## A function for clipping polygons
-# gClip <- function(frame, ## SpatialPolygonsDataFrame to be clipped
-#                   clip ## SpatialPolygonsDataFrame defining the extent to clip to
-#                   ) {
-#   clipped <- gIntersection(frame, clip, byid = T)
-#   row.names(clipped) <- as.character(gsub(" 0", "", row.names(clipped)))
-#   return(SpatialPolygonsDataFrame(clipped, frame@data[row.names(clipped), ]))
-# }
-# 
-# ## A function for removing polygons. NB: This is quite slow right now
-# gErase <- function(frame,erase) {
-#   gDifference(frame, erase)
-# }
-
-##########################################################
-#### GLOBAL VARIABLES ####
-##########################################################
-###Set Data Sources####
-## Filepath containing the Sample Design Database[s]. Use the first line if it's not a subdirectory of the working directory
-# src <- "C:\\Users\\samccord\\Documents\\AIM\\Projects\\NorCal\\" %>% sanitizer(type = "filepath")
-src <- paste(getwd(),
-             "data", ## This is the subdirectory path. It can be multiple layers deep, e.g. "data/norcal/test_set"
-             sep = "/") %>% sanitizer(type = "filepath")
-
-## Vector of SDD filenames. There can be more than one SDD in the vector.
-sdd.src <- c("SDD_NorCal_2013extensive_SDD.gdb",
-             "SDD_NorCal_2013intensive_SDD.gdb",
-             "SDD_NorCal_2013ESR_SDD.gdb", 
-             "SDD_NorCal_2014-2018_SDD_122116.gdb",
-             "SDD_NorCal_2014intensive_SDD.gdb") %>% sapply(sanitizer, type = "gdb", USE.NAMES = F)
-
-##Set the source of the reporting unit.
-## The vector can contain any number of filenames, but these are expected/need to be .shp files in the directory src
-reporting.unit.src <- c("Eagle_Lake_FO.shp",
-                        "Twin_Peaks.shp")  %>% sapply(sanitizer, type = "shp", USE.NAMES = F)
-
-
-###Set Output Files####
-## Set the filepath for the output file. Use the first line if it's not a subdirectory of the working directory
-out.src <- "data" %>% sanitizer(type = "filepath")
-## If out.src is a subdirectory path within the working directory, follow the previous line with this.
-## If out.src is a full filepath in its own right, comment it out
-out.src <- paste0(getwd(), "/", out.src)
-
-out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Project
-
-
-
-##########################################################
-#### IMPORTING DATA ####
-##########################################################
-#### Step 1: Read in Files#####
-
-###First, the SDDs#### 
-sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb"))
-
-#Step 1a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
-#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strata."
-###-->Jason
-
-###Then the Reporting Units###
-for (r in reporting.unit.src) {
-  assign(x = paste0("rep.", r),
-         value = readShapePoly(fn = paste(src, r, sep = "/"),
-                               ## The standard NAD83 projection. Used in the SDD
-                               proj4string = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")))
-  #remove intermediate objects
-  rm(r)
-}
-
-##########################################################
-#### CREATE WEIGHT CATEGORIES ####
-##########################################################
-###Step 2: Create Weight Categories
-
-
-#Step 2b: Intersect each sample frame polygon with each reporting unit to determine a) if they overlap and b) if one is contained within the other
-#I haven't figured out how to determine the overlapping order automatically, yet. So at this point it is a manual step to figure out overlapping designs
-
-
-
-
-#Once you know the overlap order, you can determine weight categories
-#These categories should be of the form Reporting.Unit_SampleFrame
-
-#With the general sample frame weight categories in place, you can then add strata as appropriate
-#In the case of NorCal, strata are relevate for the 2013ESR design and the 2014-2018 design category
-#Weight category should be
-
-
-##########################################################
-#### CALCULATE WEIGHTS ####
-##########################################################
-## and so begins Garman's folly
-## Step 3.  Cycle thru all the SDDs and generate pt weight estimates for each separately.  We'll deal with other weightings 
-##          (e.g., a FO, overlapping designs) in subsequent steps.
-
-
-## For each SDD sample frame (specified in sdd.src), adjust the sampled area (account for non-responses), generate weights,
-## update the pts file with weights, tabulate area and pt information (this table is a quick summary for internal purposes),
-## & generate the .csv file with attributes listed in Step 7 below. 
-
-
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
                      tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     reporting.unit, ## A Spatial Polygons Data Frame which describes the reporting unit boundaries. If you want to use more than one, so help me, I will rbind() every one in that vector and assign them one coherent identity
+                     reporting.unit.name = "reporting unit", ## Just what you want the reporting unit to be called. If you provide multiple SPDFs for reporting,unit, this value gets applied to all of them
+                     # stratum.raster = NULL, ## So, if you need stratum rasters, this is the place. It doesn't do anything yet though
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
                      ## Assumes the following keywords are sufficient and consistent.
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
@@ -489,6 +388,127 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   ## Output is a named list with two data frames: information about the strata and information about the points
   return(list(strata.weights = master.df, point.weights[, c("PrimaryKey", "PlotID", "final_desig", "wgt", "Longitude", "Latitude")]))
 }
+
+## Currently uncalled
+# ## A function for clipping polygons
+# gClip <- function(frame, ## SpatialPolygonsDataFrame to be clipped
+#                   clip ## SpatialPolygonsDataFrame defining the extent to clip to
+#                   ) {
+#   clipped <- gIntersection(frame, clip, byid = T)
+#   row.names(clipped) <- as.character(gsub(" 0", "", row.names(clipped)))
+#   return(SpatialPolygonsDataFrame(clipped, frame@data[row.names(clipped), ]))
+# }
+# 
+# ## A function for removing polygons. NB: This is quite slow right now
+# gErase <- function(frame,erase) {
+#   gDifference(frame, erase)
+# }
+
+##########################################################
+#### GLOBAL VARIABLES ####
+##########################################################
+###Set Data Sources####
+## Filepath containing the Sample Design Database[s]. Use the first line if it's not a subdirectory of the working directory
+# src <- "C:\\Users\\samccord\\Documents\\AIM\\Projects\\NorCal\\" %>% sanitizer(type = "filepath")
+src <- paste(getwd(),
+             "data", ## This is the subdirectory path. It can be multiple layers deep, e.g. "data/norcal/test_set"
+             sep = "/") %>% sanitizer(type = "filepath")
+
+## Vector of SDD filenames. There can be more than one SDD in the vector.
+sdd.src <- c("SDD_NorCal_2013extensive_SDD.gdb",
+             "SDD_NorCal_2013intensive_SDD.gdb",
+             "SDD_NorCal_2013ESR_SDD.gdb", 
+             "SDD_NorCal_2014-2018_SDD_122116.gdb",
+             "SDD_NorCal_2014intensive_SDD.gdb") %>% sapply(sanitizer, type = "gdb", USE.NAMES = F)
+
+## Where is the TerrADat .gdb?
+tdat.path <- paste0(getwd(), "/", "data") %>% sanitizer(type = "filepath")
+
+## What is the filename of the TerrADat .gdb?
+tdat.name <- "Terradat_data_8.17.15_complete.gdb" %>% sanitizer(type = "gdb")
+
+##Set the source of the reporting unit.
+## The vector can contain any number of filenames, but these are expected/need to be .shp files in the directory src
+reporting.unit.src <- c("Eagle_Lake_FO.shp",
+                        "Twin_Peaks.shp")  %>% sapply(sanitizer, type = "shp", USE.NAMES = F)
+
+
+###Set Output Files####
+## Set the filepath for the output file. Use the first line if it's not a subdirectory of the working directory
+out.src <- "data" %>% sanitizer(type = "filepath")
+## If out.src is a subdirectory path within the working directory, follow the previous line with this.
+## If out.src is a full filepath in its own right, comment it out
+out.src <- paste0(getwd(), "/", out.src)
+
+out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Project
+
+
+
+##########################################################
+#### IMPORTING DATA ####
+##########################################################
+#### Step 1: Read in Files#####
+
+###First, the SDDs#### 
+sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb"))
+
+## Get TerrADat imported
+tdat.terrestrial.spdf <- readOGR(dsn = paste0(tdat.path, tdat.name), layer = "SV_IND_TERRESTRIALAIM", stringsAsFactors = F)
+tdat.remote.spdf <- readOGR(dsn = paste0(tdat.path, tdat.name), layer = "SV_IND_REMOTESENSING", stringsAsFactors = F)
+tdat.prj <- proj4string(tdat.terrestrial.spdf)
+tdat.spdf <- merge(tdat.terrestrial.spdf, tdat.remote.spdf)
+tdat <- tdat.spdf@data
+
+#Step 1a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
+#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strata."
+###-->Jason
+
+###Then the Reporting Units###
+for (r in reporting.unit.src) {
+  assign(x = paste0("rep.", r),
+         value = readShapePoly(fn = paste(src, r, sep = "/"),
+                               ## The standard NAD83 projection. Used in the SDD
+                               proj4string = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")))
+  #remove intermediate objects
+  rm(r)
+}
+
+##########################################################
+#### CREATE WEIGHT CATEGORIES ####
+##########################################################
+first.pass.weights <- weighter(sdd.import = sdd.raw, tdat = tdat)
+
+###Step 2: Create Weight Categories
+
+
+#Step 2b: Intersect each sample frame polygon with each reporting unit to determine a) if they overlap and b) if one is contained within the other
+#I haven't figured out how to determine the overlapping order automatically, yet. So at this point it is a manual step to figure out overlapping designs
+
+
+
+
+#Once you know the overlap order, you can determine weight categories
+#These categories should be of the form Reporting.Unit_SampleFrame
+
+#With the general sample frame weight categories in place, you can then add strata as appropriate
+#In the case of NorCal, strata are relevate for the 2013ESR design and the 2014-2018 design category
+#Weight category should be
+
+
+##########################################################
+#### CALCULATE WEIGHTS ####
+##########################################################
+## and so begins Garman's folly
+## Step 3.  Cycle thru all the SDDs and generate pt weight estimates for each separately.  We'll deal with other weightings 
+##          (e.g., a FO, overlapping designs) in subsequent steps.
+
+
+## For each SDD sample frame (specified in sdd.src), adjust the sampled area (account for non-responses), generate weights,
+## update the pts file with weights, tabulate area and pt information (this table is a quick summary for internal purposes),
+## & generate the .csv file with attributes listed in Step 7 below. 
+
+
+
 
 
 
