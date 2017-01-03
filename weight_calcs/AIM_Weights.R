@@ -42,6 +42,11 @@ sanitizer <- function(string, type){
   return(string)
 }
 
+## A function that evaluates a parsed text string like the ones in $eval.string.upper and lower. Used in a lapply() later. Probably replaceable with parse() %>% eval() there though
+parser <- function(string){
+  return(safely(eval(parse(text = string)))[[1]])
+}
+
 ## TODO: Should try to handle raster location/import either within sdd.reader() or as an independent function
 ## Reads in SDDs. Returns a named list of lists of SPDFs: sf, pts, strata.
 ## sf is a list of sample frame SPDFs, pts is a list of point SPDFs, strata is a list of stratfication SPDFs
