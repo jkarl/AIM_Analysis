@@ -42,6 +42,11 @@ sanitizer <- function(string, type){
   return(string)
 }
 
+## A function that evaluates a parsed text string like the ones in $eval.string.upper and lower. Used in a lapply() later. Probably replaceable with parse() %>% eval() there though
+parser <- function(string){
+  return(safely(eval(parse(text = string)))[[1]])
+}
+
 ## TODO: Should try to handle raster location/import either within sdd.reader() or as an independent function
 ## Reads in SDDs. Returns a named list of lists of SPDFs: sf, pts, strata.
 ## sf is a list of sample frame SPDFs, pts is a list of point SPDFs, strata is a list of stratfication SPDFs
@@ -154,126 +159,22 @@ sdd.reader <- function(src = "", ## A filepath as a string
   ## Create a list of the sample frame SPDFs.
   ## This programmatically create a string of the existing object names that start with "sf." separated by commas
   ## then wraps that in "list()" and runs the whole string through parse() and eval() to execute it, creating a list from those SPDFs
-  sf.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = ", "), ")")))
+  sf.list <- eval(parse(text = paste0("list(`", paste(ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")], collapse = "`, `"), "`)")))
   ## Rename them with the correct SDD name because they'll be in the same order that ls() returned them earlier. Also, we need to remove sf.list itself
   names(sf.list) <- ls()[grepl(x = ls(), pattern = "^sf\\.") & !grepl(x = ls(), pattern = "^sf.list$")] %>% str_replace(pattern = "^sf\\.", replacement = "")
   
   ## Creating the named list of all the pts SPDFs created by the loop
-  pts.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
+  pts.list <- eval(parse(text = paste0("list(`", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = "`, `"), "`)")))
   names(pts.list) <- ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")] %>% str_replace(pattern = "^pts\\.", replacement = "")
   
   ## Creating the named list of all the strata SPDFs created by the loop
-  strata.list <- eval(parse(text = paste0("list(", paste(ls()[grepl(x = ls(), pattern = "^pts\\.") & !grepl(x = ls(), pattern = "^pts.list$")], collapse = ", "), ")")))
+  strata.list <- eval(parse(text = paste0("list(`", paste(ls()[grepl(x = ls(), pattern = "^strata\\.") & !grepl(x = ls(), pattern = "^strata.list$")], collapse = "`, `"), "`)")))
   names(strata.list) <- ls()[grepl(x = ls(), pattern = "^strata\\.") & !grepl(x = ls(), pattern = "^strata.list$")] %>% str_replace(pattern = "^strata\\.", replacement = "")
   
   output <- list(sf = sf.list, pts = pts.list, strata = strata.list)
   
   return(output)
 }
-
-## Currently uncalled
-# ## A function for clipping polygons
-# gClip <- function(frame, ## SpatialPolygonsDataFrame to be clipped
-#                   clip ## SpatialPolygonsDataFrame defining the extent to clip to
-#                   ) {
-#   clipped <- gIntersection(frame, clip, byid = T)
-#   row.names(clipped) <- as.character(gsub(" 0", "", row.names(clipped)))
-#   return(SpatialPolygonsDataFrame(clipped, frame@data[row.names(clipped), ]))
-# }
-# 
-# ## A function for removing polygons. NB: This is quite slow right now
-# gErase <- function(frame,erase) {
-#   gDifference(frame, erase)
-# }
-
-##########################################################
-#### GLOBAL VARIABLES ####
-##########################################################
-###Set Data Sources####
-## Filepath containing the Sample Design Database[s]. Use the first line if it's not a subdirectory of the working directory
-# src <- "C:\\Users\\samccord\\Documents\\AIM\\Projects\\NorCal\\" %>% sanitizer(type = "filepath")
-src <- paste(getwd(),
-             "data", ## This is the subdirectory path. It can be multiple layers deep, e.g. "data/norcal/test_set"
-             sep = "/") %>% sanitizer(type = "filepath")
-
-## Vector of SDD filenames. There can be more than one SDD in the vector.
-sdd.src <- c("SDD_NorCal_2013extensive_SDD.gdb",
-             "SDD_NorCal_2013intensive_SDD.gdb",
-             "SDD_NorCal_2013ESR_SDD.gdb", 
-             "SDD_NorCal_2014-2018_SDD_122116.gdb",
-             "SDD_NorCal_2014intensive_SDD.gdb") %>% sapply(sanitizer, type = "gdb", USE.NAMES = F)
-
-##Set the source of the reporting unit.
-## The vector can contain any number of filenames, but these are expected/need to be .shp files in the directory src
-reporting.unit.src <- c("Eagle_Lake_FO.shp",
-                        "Twin_Peaks.shp")  %>% sapply(sanitizer, type = "shp", USE.NAMES = F)
-
-
-###Set Output Files####
-## Set the filepath for the output file. Use the first line if it's not a subdirectory of the working directory
-out.src <- "data" %>% sanitizer(type = "filepath")
-## If out.src is a subdirectory path within the working directory, follow the previous line with this.
-## If out.src is a full filepath in its own right, comment it out
-out.src <- paste0(getwd(), "/", out.src)
-
-out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Project
-
-
-
-##########################################################
-#### IMPORTING DATA ####
-##########################################################
-#### Step 1: Read in Files#####
-
-###First, the SDDs#### 
-sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb"))
-
-#Step 1a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
-#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strata."
-###-->Jason
-
-###Then the Reporting Units###
-for (r in reporting.unit.src) {
-  assign(x = paste0("rep.", r),
-         value = readShapePoly(fn = paste(src, r, sep = "/"),
-                               ## The standard NAD83 projection. Used in the SDD
-                               proj4string = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")))
-  #remove intermediate objects
-  rm(r)
-}
-
-##########################################################
-#### CREATE WEIGHT CATEGORIES ####
-##########################################################
-###Step 2: Create Weight Categories
-
-
-#Step 2b: Intersect each sample frame polygon with each reporting unit to determine a) if they overlap and b) if one is contained within the other
-#I haven't figured out how to determine the overlapping order automatically, yet. So at this point it is a manual step to figure out overlapping designs
-
-
-
-
-#Once you know the overlap order, you can determine weight categories
-#These categories should be of the form Reporting.Unit_SampleFrame
-
-#With the general sample frame weight categories in place, you can then add strata as appropriate
-#In the case of NorCal, strata are relevate for the 2013ESR design and the 2014-2018 design category
-#Weight category should be
-
-
-##########################################################
-#### CALCULATE WEIGHTS ####
-##########################################################
-## and so begins Garman's folly
-## Step 3.  Cycle thru all the SDDs and generate pt weight estimates for each separately.  We'll deal with other weightings 
-##          (e.g., a FO, overlapping designs) in subsequent steps.
-
-
-## For each SDD sample frame (specified in sdd.src), adjust the sampled area (account for non-responses), generate weights,
-## update the pts file with weights, tabulate area and pt information (this table is a quick summary for internal purposes),
-## & generate the .csv file with attributes listed in Step 7 below. 
-
 
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
@@ -286,12 +187,17 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                                         "UNK",
                                         NA),
                      nontarget.values = c("Non-Target",
-                                          "NT"),
+                                          "NT",
+                                          "Inaccessible"),
                      ## These shouldn't need to be changed from these defaults, but better to add that functionality now than regret not having it later
                      fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
                      designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
 ){
+  names(tdat) <- str_to_upper(names(tdat))
+  fatefieldname <- str_to_upper(fatefieldname)
+  pointstratumfieldname <- str_to_upper(pointstratumfieldname)
+  designstratumfield <- str_to_upper(designstratumfield)
   
   ## Initialize data frame for stratum info. The results from each loop end up bound to this
   master.df <- NULL
@@ -302,24 +208,25 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   ## The fate values that we know about are hardcoded here.
   ## Whatever values are provided in the function arguments get concatenated and then we keep only the unique values from that result
   target.values <- c(target.values,
-                     "Target Sampled") %>% unique()
+                     "Target Sampled") %>% unique() %>% str_to_upper()
   unknown.values <- c(unknown.values,
                       "Unknown",
                       "UNK",
-                      NA) %>% unique()
+                      NA) %>% unique() %>% str_to_upper()
   nontarget.values <- c(nontarget.values,
                         "Non-Target",
-                        "NT") %>% unique()
+                        "NT") %>% unique() %>% str_to_upper()
   
   ## for each sample frame...
   for (s in names(sdd.import$sf)) {
     
-    ## get the pts file in sdd.src that corresponds to s and call it pts.spdf, then create and init the wgts attribute
+    ## get the pts file in sdd.src that corresponds to s and call it pts.spdf, then create and init the WGT attribute
     pts.spdf <- sdd.import$pts[[s]]
-    pts.spdf@data$wgts <- 0
+    pts.spdf@data[, fatefieldname] <- str_to_upper(pts.spdf@data[, fatefieldname])
+    pts.spdf@data$WGT <- 0
     
     ## based on FINAL_DESIG, get the no. of pts sampled and the nonresponses.  
-    ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. wgts for nonresponse categories,
+    ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. WGT for nonresponse categories,
     ## so having nontarget and unk N's may be useful down the road.
     target.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% target.values,])
     unknown.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% unknown.values,])
@@ -349,10 +256,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       area <- NULL
       
       ## Use recorded area of each stratum if present; else derive areas
-      if (length(strata.spdf$strtm_area_sqkm) > 0) {
+      if (length(strata.spdf$STRTM_AREA_SQKM) > 0) {
         ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
         for (j in designstrata) {
-          area[j] = (strata.spdf$strtm_area_sqkm[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
+          area[j] = (strata.spdf$STRTM_AREA_SQKM[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
         }
       } else {
         ## the following gArea is efficient when polygons are listed separately in the shapefile; otherwise, this can take
@@ -368,14 +275,18 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## This creates two named-by-fate-value vectors: Tpts (contains the number of points in each fate value) and Opts (contains the number of points for each TARGET fate value)
       for (j in designstrata) {
         Tpts <- NULL # total pts
-        Opts <- NULL ## observed pts - i.e., sampled pts 
-        for (k in c(target.values, nontarget.values, unknown.values)) {
-          ## Get the number of points in the stratum that have the current fate
-          Tpts[k] <- nrow(pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] == k ,])
-          if (k %in% target.values) {
-            Opts <- Tpts[k] ## Storing any target point counts in their own vector
-          }
-        }
+        Opts <- NULL ## observed pts - i.e., sampled pts
+        working.pts <- pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j,]
+        Tpts <- nrow(working.pts[working.pts[, fatefieldname] %in% c(target.values, nontarget.values, unknown.values),])
+        Opts <- nrow(working.pts[working.pts[, fatefieldname] %in% c(target.values),])
+        # for (k in c(target.values, nontarget.values, unknown.values)) {
+        #   print(k)
+        #   ## Get the number of points in the stratum that have the current fate
+        #   Tpts[k] <- nrow(working.pts[working.pts[, fatefieldname] == k,])
+        #   if (k %in% target.values) {
+        #     Opts <- Tpts[k] ## Storing any target point counts in their own vector
+        #   }
+        # }
         
         
         ## derive adjusted wgt for stratum j
@@ -406,21 +317,20 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         ## Bind this stratum's information to the master.df initialized outside and before the loop started
         master.df <- rbind(master.df, temp.df)  ## pile it on.....
         
-        
         ## store weights for the stratum j observed pts
         ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
         ## If a point had a target fate, assign the calculates weight
-        pts.spdf$wgts[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+        working.pts$WGT[working.pts[, pointstratumfieldname] == j & working.pts[, fatefieldname] %in% target.values] <- wgt
         ## If a point had a non-target or unknown designation, assign 0 as the weight
-        ##wgts init to zero, but these 2 lines are to make sure we record 0
-        pts.spdf$wgts[pts.spdf@data[, pointstratumfieldname] == j & pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+        ##WGT init to zero, but these 2 lines are to make sure we record 0
+        working.pts$WGT[working.pts[, pointstratumfieldname] == j & working.pts[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
         ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
-        pointweights.df <- rbind(pointweights.df, pts.spdf@data)
+        pointweights.df <- rbind(pointweights.df, working.pts)
       }## endof for (j in designstrata)
       
       ## init re-used SPDFs
       pts.spdf <- NULL
-      strata.spdf < -NULL
+      strata.spdf <- NULL
     } else { ## If there aren't strata available to us in a useful format in the SDD, we'll just weight by the sample frame
       ## since we lack stratification, use the sample frame to derive spatial extent (ha)
       sf.spdf <- sdd.import$sf[[s]]
@@ -458,10 +368,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## store weights for the stratum j observed pts
       ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
       ## If a point had a target fate, assign the calculates weight
-      pts.spdf$wgts[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+      pts.spdf$WGT[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
       ## If a point had a non-target or unknown designation, assign 0 as the weight
-      ##wgts init to zero, but these 2 lines are to make sure we record 0
-      pts.spdf$wgts[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+      ##WGT init to zero, but these 2 lines are to make sure we record 0
+      pts.spdf$WGT[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
       
       ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
       pointweights.df <- rbind(pointweights.df, pts.spdf@data)
@@ -474,16 +384,139 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   }  ## endof for(s in sdd.src )
   
   ## Adding in the TerrADat attributes because we need those primary keys
-  pointweights.df.merged <- merge(x = pts.combined, y = tdat, by.x = c("plot_key"), by.y = "PlotKey", all = F)
+  ## TODO: Figure out where PrimaryKey actually lives, because it's not my copy of TerrADat
+  pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")], x = tdat[, c("PLOTID", "PRIMARYKEY")], by.y = c("TERRA_TERRADAT_ID"), by.x = "PLOTID", all = F)
   
   ## Diagnostics in case something goes pear-shaped
-  print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
-  print(paste(pts.combined$PlotID[!(unique(pts.combined$PlotID) %in% unique(pts.combined.merged$PlotID))], collapse = ", "))
-  
+  if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
+    print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
+    print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
+  }
   
   ## Output is a named list with two data frames: information about the strata and information about the points
-  return(list(strata.weights = master.df, point.weights[, c("PrimaryKey", "PlotID", "final_desig", "wgts")]))
+  return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
 }
+
+## Currently uncalled
+# ## A function for clipping polygons
+# gClip <- function(frame, ## SpatialPolygonsDataFrame to be clipped
+#                   clip ## SpatialPolygonsDataFrame defining the extent to clip to
+#                   ) {
+#   clipped <- gIntersection(frame, clip, byid = T)
+#   row.names(clipped) <- as.character(gsub(" 0", "", row.names(clipped)))
+#   return(SpatialPolygonsDataFrame(clipped, frame@data[row.names(clipped), ]))
+# }
+# 
+# ## A function for removing polygons. NB: This is quite slow right now
+# gErase <- function(frame,erase) {
+#   gDifference(frame, erase)
+# }
+
+##########################################################
+#### GLOBAL VARIABLES ####
+##########################################################
+###Set Data Sources####
+## Filepath containing the Sample Design Database[s]. Use the first line if it's not a subdirectory of the working directory
+# src <- "C:\\Users\\samccord\\Documents\\AIM\\Projects\\NorCal\\" %>% sanitizer(type = "filepath")
+src <- paste(getwd(),
+             "data", ## This is the subdirectory path. It can be multiple layers deep, e.g. "data/norcal/test_set"
+             sep = "/") %>% sanitizer(type = "filepath")
+
+## Vector of SDD filenames. There can be more than one SDD in the vector.
+sdd.src <- c("SDD_NorCal_2013extensive_SDD.gdb",
+             "SDD_NorCal_2013intensive_SDD.gdb",
+             "SDD_NorCal_2013ESR_SDD.gdb", 
+             "SDD_NorCal_2014-2018_SDD_122116.gdb",
+             "SDD_NorCal_2014intensive_SDD.gdb") %>% sapply(sanitizer, type = "gdb", USE.NAMES = F)
+
+## Where is the TerrADat .gdb?
+tdat.path <- paste0(getwd(), "/", "data") %>% sanitizer(type = "filepath")
+
+## What is the filename of the TerrADat .gdb?
+tdat.name <- "Terradat_data_8.17.15_complete.gdb" %>% sanitizer(type = "gdb")
+
+##Set the source of the reporting unit.
+## The vector can contain any number of filenames, but these are expected/need to be .shp files in the directory src
+reporting.unit.src <- c("Eagle_Lake_FO.shp",
+                        "Twin_Peaks.shp")  %>% sapply(sanitizer, type = "shp", USE.NAMES = F)
+
+
+###Set Output Files####
+## Set the filepath for the output file. Use the first line if it's not a subdirectory of the working directory
+out.src <- "data" %>% sanitizer(type = "filepath")
+## If out.src is a subdirectory path within the working directory, follow the previous line with this.
+## If out.src is a full filepath in its own right, comment it out
+out.src <- paste0(getwd(), "/", out.src)
+
+out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Project
+
+
+
+##########################################################
+#### IMPORTING DATA ####
+##########################################################
+#### Step 1: Read in Files#####
+
+###First, the SDDs#### 
+sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb"))
+
+## Get TerrADat imported
+tdat.terrestrial.spdf <- readOGR(dsn = paste0(tdat.path, tdat.name), layer = "SV_IND_TERRESTRIALAIM", stringsAsFactors = F)
+tdat.remote.spdf <- readOGR(dsn = paste0(tdat.path, tdat.name), layer = "SV_IND_REMOTESENSING", stringsAsFactors = F)
+tdat.prj <- proj4string(tdat.terrestrial.spdf)
+tdat.spdf <- merge(tdat.terrestrial.spdf, tdat.remote.spdf)
+tdat <- tdat.spdf@data
+
+#Step 1a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
+#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strata."
+###-->Jason
+
+###Then the Reporting Units###
+for (r in reporting.unit.src) {
+  assign(x = paste0("rep.", r),
+         value = readShapePoly(fn = paste(src, r, sep = "/"),
+                               ## The standard NAD83 projection. Used in the SDD
+                               proj4string = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")))
+  #remove intermediate objects
+  rm(r)
+}
+
+##########################################################
+#### CREATE WEIGHT CATEGORIES ####
+##########################################################
+first.pass.weights <- weighter(sdd.import = sdd.raw, tdat = tdat)
+
+###Step 2: Create Weight Categories
+
+
+#Step 2b: Intersect each sample frame polygon with each reporting unit to determine a) if they overlap and b) if one is contained within the other
+#I haven't figured out how to determine the overlapping order automatically, yet. So at this point it is a manual step to figure out overlapping designs
+
+
+
+
+#Once you know the overlap order, you can determine weight categories
+#These categories should be of the form Reporting.Unit_SampleFrame
+
+#With the general sample frame weight categories in place, you can then add strata as appropriate
+#In the case of NorCal, strata are relevate for the 2013ESR design and the 2014-2018 design category
+#Weight category should be
+
+
+##########################################################
+#### CALCULATE WEIGHTS ####
+##########################################################
+## and so begins Garman's folly
+## Step 3.  Cycle thru all the SDDs and generate pt weight estimates for each separately.  We'll deal with other weightings 
+##          (e.g., a FO, overlapping designs) in subsequent steps.
+
+
+## For each SDD sample frame (specified in sdd.src), adjust the sampled area (account for non-responses), generate weights,
+## update the pts file with weights, tabulate area and pt information (this table is a quick summary for internal purposes),
+## & generate the .csv file with attributes listed in Step 7 below. 
+
+
+
 
 
 

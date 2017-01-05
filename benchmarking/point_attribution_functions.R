@@ -20,14 +20,16 @@ attribute.shapefile <- function(points = SpatialPointsDataFrame( coords = matrix
                                 newfield = "Evaluation.Stratum", ## Name of the new field in the output to assign the values from attributefield to
                                 projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")){
   ## Strip the file extension from shape, just in case it was there
-  shape <- str_replace(shape, pattern = "\\.[Ss][Hh][Pp]$", replacement = "")
+  if (is.character(shape)) {
+    shape <- str_replace(shape, pattern = "\\.[Ss][Hh][Pp]$", replacement = "") 
+  }
   ## If this is coming from a geodatabase, extract the shapefile appropriately. Otherwise read in the .shp
   if (grepl(x = data.path, pattern = "\\.[Gg][Dd][Bb]$")) {
     shape.spdf <- readOGR(dsn = data.path, layer = shape, stringsAsFactors = F) %>% spTransform(projection)
   } else if (data.path != "") {
     shape.spdf <- readOGR(dsn = paste0(data.path, "/", shape, ".shp"), layer = shape, stringsAsFactors = F) %>% spTransform(projection)
   } else if (class(shape)[1] == "SpatialPointsDataFrame" | class(shape)[1] == "SpatialPolygonsDataFrame") {
-    shape.spdf <- shape
+    shape.spdf <- shape %>% spTransform(projection)
   }
   ## Make sure that the points also adhere to the same projection
   points <- points %>% spTransform(projection)
@@ -39,27 +41,27 @@ attribute.shapefile <- function(points = SpatialPointsDataFrame( coords = matrix
     ## Get the data frame from checking the points against the current subset of the polygons
     over.result <- over(current.points, shape.spdf[shape.spdf@data[, attributefield] == n,])
     ## Add the values to the newfield column
-    current.points[, newfield] <- over.result[, attributefield]
+    current.points@data[, newfield] <- over.result[, attributefield]
     ## Store the results from this loop using the naming scheme "over__[current value of n]" with spaces replaced with underscores to prevent parsing errors later
     assign(x = str_replace(paste0("over__", n), " ", "_"),
            ## Only keep the ones that actually took on an attribute
-           value = current.points[!is.na(current.points[, newfield]),])
+           value = current.points[!is.na(current.points@data[, newfield]),])
   }
   ## List all the objects in the working environment that start with "over__" and rbind them into a single SPDF
   attributed.spdfs <- ls()[grepl(x = ls(), pattern = "^over__")]
-  output <- eval(parse(text = paste0("rbind(", paste(attributed.spdfs, collapse = ",") ,")")))
+  output <- eval(parse(text = paste0("rbind(`", paste(attributed.spdfs, collapse = "`,`") ,"`)")))
   
   return(output)
 }
 
 ## TODO: make the lut and list functions pull from and assign to arbitrary field names
-  
+
 ## Function to import .csv that attributes the plots matching the PLOT column with evaluation strata from the EVAL.STRATUM column
-attribute.list <- function(points = points = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
                            datapath = "", ## Only specify if you need to read in the lookup table from a file
                            lut = "", ## Either the filename !!!OR!!! a data frame. Either way it needs a (PlotID | PrimaryKey) column and an Evaluation.Stratum column
                            dropNA = T ## Strip out points that did not qualify for an attribution stratum
-                           ){
+){
   ## Sanitize the input
   datapath <- str_replace(datapath, pattern =  "/$", replacement = "")
   if ((datapath == "" | is.null) & is.data.frame(lut)) {
