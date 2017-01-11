@@ -46,8 +46,15 @@ read.benchmarks <- function(data.path = "", ## Path to the folder containing the
 }
 
 ## A function that evaluates a parsed text string like the ones in $eval.string.upper and lower. Used in a lapply() later. Probably replaceable with parse() %>% eval() there though
+safe.parser <- function(string){
+  output <- safely(eval(parse(text = string)))
+  return(output[[1]])
+}
+
+## For those strange occasions when the safe version gives you errors?
 parser <- function(string){
-  return(safely(eval(parse(text = string))))[[1]]
+  output <- eval(parse(text = string))
+  return(output)
 }
 
 ## A function to make sure that input strings are correctly formatted for filepaths, .gdb filenames, .xlsx filenames, .csv filenames, and .shp filenames
