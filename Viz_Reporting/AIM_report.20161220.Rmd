@@ -1,0 +1,92 @@
+---
+title: "BLM AIM Project Analysis Report"
+description: ''
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    toc: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+params:
+  terradat.gdb: test  
+  year: 2013
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(echo = TRUE)
+  library(dplyr)
+  library(ggplot2)
+  library(lubridate)
+  library(reshape2)
+  library(leaflet)
+  library(sp)
+  library(multcomp) 
+  library(RODBC)
+  library(rgdal)
+```
+
+## Introduction
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin molestie risus non sem faucibus lobortis. Cras venenatis orci dui. Aliquam id tincidunt mi. Nam in augue ullamcorper, pellentesque ex quis, lacinia dui. Etiam porta semper neque, ut accumsan leo vulputate vitae. Pellentesque mollis elit ante. Integer blandit id mauris convallis convallis. Nunc ut bibendum ex. Ut aliquet at est quis sagittis. Proin sollicitudin elit eu ex porttitor pellentesque. Donec sit amet arcu pretium, vestibulum sapien quis, hendrerit leo. Aenean suscipit purus urna, ac congue turpis vulputate vitae. Phasellus vestibulum mollis fringilla. Nunc et dui pellentesque, condimentum neque in, pharetra ante. Morbi leo ante, ultrices a dolor id, egestas pretium dolor.
+
+### Report Purpose and use
+
+Nullam urna sem, auctor ac aliquam a, condimentum in erat. Nam auctor elit ac fringilla tempor. Etiam et sem varius, malesuada nulla sit amet, facilisis lorem. Nulla facilisi. Vivamus semper arcu non efficitur porttitor. Nam et velit id arcu porttitor convallis id id ante. Nulla ut eros in sapien feugiat congue. Maecenas consectetur porta ipsum, nec lacinia elit.
+
+Donec sed urna quis ante tincidunt vestibulum. Donec lobortis nulla eget tortor ultrices iaculis. Morbi et mi sit amet lorem suscipit pharetra. Fusce ut tincidunt velit, a placerat lectus. Donec vitae lacus quis orci sagittis mollis sagittis ut ex. Maecenas eget est sed leo congue accumsan. Curabitur hendrerit augue rutrum, consectetur mauris quis, auctor lacus. Etiam augue massa, blandit pretium magna ut, molestie porttitor sem. Sed varius elit non enim molestie convallis. Cras pellentesque quam scelerisque purus suscipit imperdiet. Nunc at tristique libero. Fusce tincidunt vel magna et posuere.
+
+### Report Organization
+
+Maecenas quis elementum risus. Duis sollicitudin rutrum diam, eget porttitor tellus venenatis a. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Sed eu justo vel urna porttitor sodales. In pharetra augue metus, eget efficitur neque ornare sed. In vehicula malesuada finibus. Aenean faucibus nisi a enim tincidunt, sit amet sodales diam consectetur. Suspendisse sit amet hendrerit lacus, in aliquam mauris. Maecenas auctor sapien ligula, at convallis mi auctor eu. Vivamus varius nibh odio, vel ornare orci laoreet ut. Maecenas nec tristique felis, sed sagittis nisl.
+
+### Interpreting the Results
+
+Donec sed urna quis ante tincidunt vestibulum. Donec lobortis nulla eget tortor ultrices iaculis. Morbi et mi sit amet lorem suscipit pharetra. Fusce ut tincidunt velit, a placerat lectus. Donec vitae lacus quis orci sagittis mollis sagittis ut ex. Maecenas eget est sed leo congue accumsan. Curabitur hendrerit augue rutrum, consectetur mauris quis, auctor lacus. Etiam augue massa, blandit pretium magna ut, molestie porttitor sem. Sed varius elit non enim molestie convallis. Cras pellentesque quam scelerisque purus suscipit imperdiet. Nunc at tristique libero. Fusce tincidunt vel magna et posuere.
+
+### Additional Information
+
+Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Phasellus laoreet eu arcu eu posuere. Etiam nunc ex, pulvinar eu varius cursus, tempus eget orci. Vivamus nec arcu porta, tempus tellus eu, dapibus ante. Aenean in nisi congue orci blandit aliquet. Nulla fringilla neque ut suscipit gravida. Integer tristique et risus eget feugiat. Etiam efficitur viverra sapien, sed finibus augue pretium a. Phasellus vel tincidunt purus, in vehicula orci. Nullam vehicula neque orci, a bibendum nunc sagittis tristique. In sed turpis non risus facilisis sagittis. Etiam blandit velit erat, ut dapibus enim facilisis a. Mauris a leo ut nunc tempor congue vulputate et felis.
+
+***
+## Data Summary
+
+ * Indicators included in the report (data explorer tool)
+ * time period of the report (TerrADat)
+ * study area and reporting units with map (SDD, reporting units)
+
+***
+## Sampling Summary
+
+ * map of points sampled against strata (SDD), 
+ * bar chart of point fates (SDD), 
+ * timing of points sampled (TerrADat or the analysis input table)
+
+***
+## Objectives, Benchmarks, and Landscape Thresholds
+
+  * from data explorer workbook
+
+***
+## Condition Estimates by Objective
+
+  * Objective
+  * Indicator, benchmark, landscape threshold
+  * Graph of results showing landscape threshold
+  * Map(s) of spatial distribution of indicator from grass/shrub, EVT (as appropriate)
+
+***
+## Appendices
+
+  * Methods for data collection (web link)
+  * Sample design information (list SDD used)
+  * Analysis methods (web link)
+  * Report Inputs
+    + Raw data from TerrADat (?? Point to Data Explorer workbook?)
+    + Sample design geodatabase
+    + Project planning workbook
+    + Reporting units spatial data
+    + Remote-sensing datasets
+

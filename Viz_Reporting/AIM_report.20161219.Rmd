@@ -1,0 +1,333 @@
+---
+title: "BLM AIM Project Analysis Report"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+description: ''
+output:
+  html_document:
+    fig_caption: yes
+    toc: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+params:
+  ind_lut: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\tdat_indicator_lut.csv
+  infile: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\analysis\analysis_output.csv
+  project: New Mexico RGdNNM #"Rio Grande Del Norte NM"
+  sdd.gdb: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\TaFO_SDD_041215.gdb
+  benchmarks.filename: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\TerrestrialAIM_DataAnalysis_Template.xlsx
+  tdat.gdb: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\TerrADatExport_19Jan2016.gdb
+  grassShrubDir: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\grass_shrub\Provisional_GB_Bare_Ground
+  repunits.file: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\Viz_Reporting\example_rep_units.shp
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+## Set up the environmente and define the functions used in creating the report
+
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(reshape2)
+library(leaflet)
+library(sp)
+library(multcomp) 
+library(RODBC)
+library(rgdal)
+library(raster)
+library(xlsx)
+library(gridExtra)
+
+
+## Function to lookup terradat indicator values in a table and return a real name
+## It's called vlookup because it works like that function in Excel.
+##  value = the value to pass to the function to lookup
+##  table = the lookup table data frame
+##  lcol = the lookup column
+##  rcol = the return column, or column with the values you want back from the lookup function
+vlookup <- function(value,table,lcol,rcol) {
+  r <- which(indicator.lut[lcol]==value)
+  return(indicator.lut[r,rcol])  
+}
+
+
+
+## Function to programatically create output bar plots for a given indicator.
+## Requires the following inputs:
+##  df = data.frame of the cat.analysis results
+##  ru = desired level of reporting units for the graph
+##  subpop = desired specific reporting unit
+##  indicator = indicator to be graphed
+indicatorPlot <- function(df,ru,subpop,indicator,threshold=0.5) {
+  plot.data <- df %>% filter(Type==ru & Subpopulation==subpop & Indicator==indicator) %>% filter(Category!="Total")
+  ind.realname <- vlookup(indicator,indicator.lut,2,3) ## Lookup the pretty name for the indicator
+  ggplot(plot.data, aes(x=Category,y=Estimate.P,fill=Category))+geom_bar(stat="identity")+coord_flip()+
+    geom_errorbar(aes(ymax=UCB95Pct.P,ymin=LCB95Pct.P),width=0.25)+
+    scale_fill_brewer(type="div",palette="RdYlBu")+
+    geom_hline(yintercept=threshold,colour="gold",size=2)+
+    ylim(0,100)+
+    ggtitle(paste("Proportion of Reporting Unit by Category: \n",ind.realname,sep=""))+ylab("Estimated Proportion of Reporting Unit")
+}
+
+## Function to display table of cat.analysis results. Takes same arguments as indicatorPlot function (minus the threshold argument)
+indicatorTable <- function(df,ru,subpop,indicator) {
+  table.data <- df %>% filter(Type==ru & Subpopulation==subpop & Indicator==indicator) %>% filter(Category!="Total")
+  table.data <- table.data[,5:10]
+  names(table.data)<-c("Category","# Points","Prop. Estimate","Prop. Std. Error","Lower CI","Upper CI")
+  return(table.data)
+}
+
+## Function to create a basic map showing the location of the reporting unit within the study area
+##   Requires the following inputs:
+##   level = reporting unit level
+##   ru = reporting unit name
+##   repunits.spdf = spatial polygon data frame for the reporting units
+##   prjarea.spdf = spatial polygon data frame for the project area
+indicatorMap <- function(level,ru,repunits.spdf,prjarea.spdf) {
+  runit <- repunits.spdf[repunits.spdf$RULevel==level&repunits.spdf$RepUnit==ru,]
+  m <- ggplot()+geom_polygon(data=fortify(prjarea.spdf),aes(x=long,y=lat),fill="white",color="black")+coord_map()
+  if (level=="ProjectArea") {
+    m<-m+geom_polygon(data=fortify(prjarea.spdf),aes(x=long,y=lat),fill="darkgray")
+  } else {
+    m<-m+geom_polygon(data=fortify(runit),aes(x=long,y=lat),fill="darkgray")
+  }
+  m<-m+theme(line=element_blank(),text=element_blank(),title=element_blank())
+  return(m)
+}
+
+#### Standard messages to insert at will
+msg1 <- "Nullam urna sem, auctor ac aliquam a, condimentum in erat. Nam auctor elit ac fringilla tempor. Etiam et sem varius, malesuada nulla sit amet, facilisis lorem. Nulla facilisi. Vivamus semper arcu non efficitur porttitor."
+
+```
+
+```{r loadData, message=FALSE, warning=FALSE, include=FALSE}
+## TerrADat indicator names lookup table
+  indicator.lut <- read.csv(params$ind_lut, header=TRUE, stringsAsFactors = FALSE)
+
+## Analysis results from cat.analysis
+  aim.analysis <- read.csv(params$infile, header = TRUE, stringsAsFactors = FALSE)
+  ru.levels <- unique(aim.analysis$Type)
+
+## Reporting Unit Spatial Polygons
+  repUnits.spdf <- shapefile(params$repunits.file)
+  
+## Plot information from TerrADat (date sampled, lat/long)
+  tdat.plots <- readOGR(dsn=params$tdat.gdb, layer="SV_IND_TERRESTRIALAIM",stringsAsFactors = F)
+  # Filter by the project
+  ptn <- paste("^",params$project,"*",sep="")
+  tdat.proj.spdf <- tdat.plots[grep(ptn,tdat.plots$ProjectName),]
+  rm(tdat.plots) # free up some memory
+  # fix the dates for plotting
+  tdat.proj.spdf$year <- year(as.Date(tdat.proj.spdf$DateVisited))
+  tdat.proj.spdf$yday <- yday(as.Date(tdat.proj.spdf$DateVisited))
+
+    
+## Objectives and benchmark information from the Excel template
+  benchmarks.raw <- read.xlsx(file = params$benchmarks.filename,
+                              sheetName = "Monitoring Objectives",
+                              header = T,
+                              stringsAsFactors = F)
+  # Strip out the extraneous columns and rows, which includes if they left the example in there
+  benchmarks <- benchmarks.raw[!grepl(x = benchmarks.raw$Management.Question, pattern = "^[Ee].g.") & !is.na(benchmarks.raw$Indicator), 1:12]
+  # Create the evaluations for the upper and lower limits of each benchmark.
+  # The way the spreadsheet is configured, there should be no rows without both defined
+  benchmarks$eval.string.lower <- paste0(benchmarks$Lower.Limit, benchmarks$LL.Relation)
+  benchmarks$eval.string.upper <- paste0(benchmarks$UL.Relation, benchmarks$Upper.Limit)
+  # Create an evaluation string for future use with the required proportion and its relationship
+  benchmarks$eval.string.proportion <- paste0(benchmarks$Proprtion.Relation, benchmarks$Required.Proportion)
+  # For each benchmark add in the name of the field in TerrADat that corresponds
+  benchmarks <- merge(x = benchmarks, y = indicator.lut, by.x = "Indicator", by.y = "indicator.name")
+
+## Sample Design Information (point fate, stratification, study area bdy)
+  strata.spdf <- readOGR(dsn=params$sdd.gdb, layer="Terra_Strtfctn",stringsAsFactors=F)
+  prjarea.spdf <- readOGR(dsn=params$sdd.gdb, layer="Terra_Prjct_Area",stringsAsFactors=F)
+    # Dissolve any additional polygons so we have a single boundary for the project area
+    prjarea.spdf$dissolve <- 1
+    prjarea.spdf <- gUnaryUnion(prjarea.spdf,id=prjarea.spdf@data$dissolve)
+  sampfrm.spdf <- readOGR(dsn=params$sdd.gdb, layer="Terra_Sample_Frame",stringsAsFactors=F)
+  dsgnpts.spdf <- readOGR(dsn=params$sdd.gdb, layer="Terra_Sample_Points",stringsAsFactors=F)
+
+## Grass/shrub
+bare.g <- raster(paste(params$grassShrubDir,"\\usgs_gb_bare_033116_est_v1.img",sep=""))
+  #get extent of sample frame, reproject that extent, and clip the raster
+  gs.crs <- crs(bare.g)
+  frame.ext <- as.data.frame(t(bbox(sampfrm.spdf)))
+  coordinates(frame.ext) <- c("x","y")
+  proj4string(frame.ext) <- crs(sampfrm.spdf)
+  frm.ext.prj <- spTransform(frame.ext, gs.crs)
+  
+## Landfire EVT
+
+```
+
+
+# Introduction
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin molestie risus non sem faucibus lobortis. Cras venenatis orci dui. Aliquam id tincidunt mi. Nam in augue ullamcorper, pellentesque ex quis, lacinia dui. Etiam porta semper neque, ut accumsan leo vulputate vitae. Pellentesque mollis elit ante. Integer blandit id mauris convallis convallis. Nunc ut bibendum ex. Ut aliquet at est quis sagittis. Proin sollicitudin elit eu ex porttitor pellentesque. Donec sit amet arcu pretium, vestibulum sapien quis, hendrerit leo. Aenean suscipit purus urna, ac congue turpis vulputate vitae. Phasellus vestibulum mollis fringilla. Nunc et dui pellentesque, condimentum neque in, pharetra ante. Morbi leo ante, ultrices a dolor id, egestas pretium dolor.
+
+## Report Purpose and use
+
+The purpose of this report is to summarize natural resource conditions across an area of interest.  This information can be used to evaluate whether or not goals or desired conditions are being achieved across BLM lands.  This information is key to successful adaptive management.  Specific management applications include:  treatment effectiveness, Land Health Standards evaluation, sage-grouse habitat assessments and Land Use Plan effectiveness.  Tables, graphs, and other content from this report can be pasted into decision-making documents, or the entire report can be used as an appendix.  
+
+This report focuses on standard core indicators that are relevant to management questions across all BLM ecosystem types, as identified under the BLM AIM Strategy. It also includes relevant standard geospatial datasets.  
+
+This report was generated through partnership among the BLM National Operations Center, USDA-ARS Jornada, and the BLM National Aquatic Monitoring Center.  
+
+
+## Report Organization
+
+Maecenas quis elementum risus. Duis sollicitudin rutrum diam, eget porttitor tellus venenatis a. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Sed eu justo vel urna porttitor sodales. In pharetra augue metus, eget efficitur neque ornare sed. In vehicula malesuada finibus. Aenean faucibus nisi a enim tincidunt, sit amet sodales diam consectetur. Suspendisse sit amet hendrerit lacus, in aliquam mauris. Maecenas auctor sapien ligula, at convallis mi auctor eu. Vivamus varius nibh odio, vel ornare orci laoreet ut. Maecenas nec tristique felis, sed sagittis nisl.
+
+## Interpreting the Results
+
+Results in this report can be used to evaluate whether desired conditions are being achieved across a landscape.  Desired conditions are specified as measureable monitoring objectives that include a natural resource indicator of interest, a benchmark that identifies desired values of that indicator, and the proportion of the landscape that should meet the benchmark.  This report provides statistical estimates of the proportion of the landscape achieving the monitoring objectives, in the form of tables, graphs and other information.  Individuals requesting the report supplied relevant goals, monitoring objectives and reporting units as part of the process of designing their monitoring effort (see [http://aim.landscapetoolbox.org/design](http://aim.landscapetoolbox.org/design)).  Upon receipt, it will be the responsibility of the user to evaluate whether goals are achieved and make management recommendations.
+
+Consider the following when you evaluate whether goals are achieved as they provide important contextual information:
+
+  * Monitoring Objectives – Overall, are they appropriate for the reporting unit of interest?  Are benchmarks well-justified and based on best available knowledge? Are desired proportions informed by management goals?
+  * Reporting unit, especially as it relates to desired proportion in the benchmarks
+  * Timing of sampling, including yearly and within-season variability
+  * Sample spread/point fates – are they spread out enough on the landscape?  Were some areas systematically missed, which could lead to bias?  
+
+
+## Additional Information
+
+Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Phasellus laoreet eu arcu eu posuere. Etiam nunc ex, pulvinar eu varius cursus, tempus eget orci. Vivamus nec arcu porta, tempus tellus eu, dapibus ante. Aenean in nisi congue orci blandit aliquet. Nulla fringilla neque ut suscipit gravida. Integer tristique et risus eget feugiat. Etiam efficitur viverra sapien, sed finibus augue pretium a. Phasellus vel tincidunt purus, in vehicula orci. Nullam vehicula neque orci, a bibendum nunc sagittis tristique. In sed turpis non risus facilisis sagittis. Etiam blandit velit erat, ut dapibus enim facilisis a. Mauris a leo ut nunc tempor congue vulputate et felis.
+
+***
+# Data Summary
+
+### Indicators included in the report
+ The following indicators were specified in the AIM data analysis template and are included in this report:
+```{r indicatorsIncluded, echo=FALSE, results='asis'}
+  inds <- unique(benchmarks$indicator.name.alt)
+  for (ind in inds) {
+    cat("\n  * ",ind,"\n")
+  }
+
+```
+
+ 
+### Time period of the report
+This report covers data collected between __`r as.Date(min(tdat.proj.spdf$DateVisited))`__ and __`r as.Date(max(tdat.proj.spdf$DateVisited))`__. Timing of the data collection in each year is shown below.
+
+```{r plotDates, echo=FALSE, message=FALSE, warning=FALSE}
+  mstartdays <- c(0,32,61,92,122,153,183,214,245,275,306,336)
+  mnames=c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sept","Oct","Nov","Dec")
+  ggplot(data=as.data.frame(tdat.proj.spdf), aes(x=yday,fill=factor(year))) + geom_histogram(binwidth=(7)) + xlim(0,365) +
+    geom_vline(xintercept=mstartdays,color="white",size=0.75) +
+    scale_x_continuous(breaks=mstartdays, labels=mnames) +
+    ggtitle("Histogram of sample points by week") +
+    theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) +
+    xlab("Day of the year") + ylab("Number of Plots")
+```
+
+
+### study area and reporting units with map (SDD, reporting units)
+
+```{r studyMap, echo=FALSE}
+## Create the study area map - project boundary, sample frame, points sampled (from TerrADat)
+## Use leaflet.
+bnds <- bbox(prjarea.spdf)
+m <- leaflet(sampfrm.spdf) %>% addTiles() %>%
+  fitBounds(bnds[1,1],bnds[2,1],bnds[1,2],bnds[2,2]) %>%
+  addPolygons(data=sampfrm.spdf,fill=TRUE,stroke=TRUE,color="tan",fillOpacity = 0.6,weight=2, group="Sample Frame") %>%
+  addPolygons(data=prjarea.spdf,fill=FALSE,stroke=TRUE,color="#000",weight=3, group="Study Area") %>%
+  addCircleMarkers(data=dsgnpts.spdf, radius=4, color="navy",stroke=FALSE,fillOpacity = 0.8, group="Sample Points") %>%
+  addLegend("bottomright",colors=c("#000","tan","navy"),labels=c("Study Area Boundary","Sample Frame","Design Sample Points")) %>%
+  addLayersControl(
+    overlayGroups = c("Sample Points","Sample Frame","Study Area"),
+    options=layersControlOptions(collapsed=FALSE)
+  )
+m
+
+
+#m <- get_map(bnds,maptype="roadmap")
+#ggmap(m)+
+#  geom_polygon(data=tidy(prjarea.spdf),aes(x=long,y=lat,group=group), color='black', size=0.25)+
+  #geom_polygon(data=fortify(sampfrm.spdf,region="OBJECTID"),aes(x=long,y=lat,group=group), fill="tan", color="tan")+
+#  geom_point(data=as.data.frame(dsgnpts.spdf),aes(x=coords.x1,y=coords.x2))+
+#  coord_map()
+
+```
+
+
+***
+# Sampling Summary
+
+ * map of points sampled against strata (SDD), 
+ * bar chart of point fates (SDD), 
+ * timing of points sampled (TerrADat or the analysis input table)
+
+***
+# Objectives, Benchmarks, and Landscape Thresholds
+
+```{r objectivesSummary, echo=FALSE, warning=FALSE, message=FALSE}
+bm.table <- benchmarks[,c(2,1,4)]
+
+knitr::kable(bm.table)
+
+```
+
+
+  * from data explorer workbook
+
+***
+# Condition Estimates by Objective
+
+  * Objective
+  * Indicator, benchmark, landscape threshold
+  * Graph of results showing landscape threshold
+  * Map of the reporting unit relative to the sample frame
+  * Map(s) of spatial distribution of indicator from grass/shrub, EVT (as appropriate)
+
+```{r conditionResults, echo=FALSE, results='asis'}
+
+for (lev in ru.levels) { # by reporting unit level
+  cat("\n## Reporting Unit Level: ",lev,"\n")
+  cat("\n",msg1,"\n")
+  data.rulevel <- aim.analysis %>% filter(Type==lev)
+  rus <- unique(data.rulevel$Subpopulation)
+  for (ru in rus) { # by specific reporting unit
+    cat("\n### Results for ",ru,"\n")
+    cat("\n",msg1,"\n")
+    data.ru <- data.rulevel %>% filter(Subpopulation==ru)
+    Indicators <- unique(data.rulevel$Indicator)
+    for (ind in Indicators) {  # by indicator
+      ind.name <- vlookup(ind,indicator.lut,2,3)
+      cat("\n#### Indicator: ",ind.name,"\n")
+      cat("\n",msg1,"\n")
+      g <- indicatorPlot(aim.analysis,lev,ru,ind,60)
+      m <- indicatorMap(lev,ru,repUnits.spdf,prjarea.spdf)
+      lay <- rbind(c(1,2,2,2),c(3,2,2,2))
+      grid.arrange(m,g,layout_matrix=lay)
+      cat("\n")
+      cat("\n",msg1,"\n")
+      cat("\n#### Results Table\n")
+      cat(pander::pander(indicatorTable(aim.analysis,lev,ru,ind)))
+      cat("\n")
+    }
+  }
+}
+
+#indicatorPlot(aim.analysis,lev,ru,ind)
+
+
+```
+
+
+***
+# Appendices
+
+  * Methods for data collection (web link)
+  * Sample design information (list SDD used)
+  * Analysis methods (web link)
+  * Report Inputs
+    + Raw data from TerrADat (?? Point to Data Explorer workbook?)
+    + Sample design geodatabase
+    + Project planning workbook
+    + Reporting units spatial data
+    + Remote-sensing datasets
+
+
