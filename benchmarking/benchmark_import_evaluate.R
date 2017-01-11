@@ -46,8 +46,15 @@ read.benchmarks <- function(data.path = "", ## Path to the folder containing the
 }
 
 ## A function that evaluates a parsed text string like the ones in $eval.string.upper and lower. Used in a lapply() later. Probably replaceable with parse() %>% eval() there though
+safe.parser <- function(string){
+  output <- safely(eval(parse(text = string)))
+  return(output[[1]])
+}
+
+## For those strange occasions when the safe version gives you errors?
 parser <- function(string){
-  return(safely(eval(parse(text = string))))[[1]]
+  output <- eval(parse(text = string))
+  return(output)
 }
 
 ## A function to make sure that input strings are correctly formatted for filepaths, .gdb filenames, .xlsx filenames, .csv filenames, and .shp filenames
@@ -138,46 +145,69 @@ tdat$Evaluation.Stratum <- "Loamy"
 ## Strip out the ones without evaluation strata
 tdat <- tdat[!is.na(tdat$Evaluation.Stratum),]
 
-## Making a tall version of the TerrADat data frame
-## Indicators listed in order of appearance in TerrADat, line breaks inserted at thematic breaks
-tdat.tall <- gather(tdat, Indicator, Value,
-                    ## Terrestrial AIM values first
-                    GapPct_25_50,GapPct_51_100,GapPct_101_200,GapPct_200_plus,GapPct_25_plus,
-                    BareSoilCover_FH,TotalFoliarCover_FH,
-                    NonInvPerenForbCover_AH,NonInvAnnForbCover_AH,NonInvPerenGrassCover_AH,NonInvAnnGrassCover_AH,NonInvAnnForbGrassCover_AH,NonInvPerenForbGrassCover_AH,
-                    NonInvSucculentCover_AH,NonInvShrubCover_AH,NonInvSubShrubCover_AH,NonInvTreeCover_AH,
-                    InvPerenForbCover_AH,InvAnnForbCover_AH,InvPerenGrassCover_AH,InvAnnGrassCover_AH,InvAnnForbGrassCover_AH,InvPerenForbGrassCover_AH,
-                    InvSucculentCover_AH,InvShrubCover_AH,InvSubShrubCover_AH,InvTreeCover_AH,
-                    SagebrushCover_AH,
-                    WoodyHgt_Avg,HerbaceousHgt_Avg,SagebrushHgt_Avg,OtherShrubHgt_Avg,
-                    NonInvPerenGrassHgt_Avg,InvPerenGrassHgt_Avg,
-                    InvPlantCover_AH,
-                    InvPlant_NumSp,
-                    SoilStability_All,SoilStability_Protected,SoilStability_Unprotected,
-                    ## Remote sensing values
-                    HerbLitterCover_FH,WoodyLitterCover_FH,EmbLitterCover_FH,TotalLitterCover_FH,
-                    RockCover_FH,BiologicalCrustCover_FH,VagrLichenCover_FH,LichenMossCover_FH,
-                    DepSoilCover_FH,WaterCover_FH,
-                    NonInvPerenForbCover_FH,NonInvAnnForbCover_FH,NonInvPerenGrassCover_FH,NonInvAnnGrassCover_FH,
-                    NonInvSucculentCover_FH,NonInvShrubCover_FH,NonInvSubShrubCover_FH,NonInvTreeCover_FH,
-                    InvPerenForbCover_FH,InvAnnForbCover_FH,InvPerenGrassCover_FH,InvAnnGrassCover_FH,
-                    InvSucculentCover_FH,InvShrubCover_FH,InvSubShrubCover_FH,InvTreeCover_FH,
-                    SageBrushCover_FH)
-
-## Merge the tall TerrADat with the benchmark information
-tdat.tall.benched <- merge(x = tdat.tall, y = benchmarks[, c("Evaluation.Stratum", "indicator.tdat", "Evaluation.Category", "eval.string.lower", "eval.string.upper")], by.x = c("Evaluation.Stratum", "Indicator"), by.y = c("Evaluation.Stratum", "indicator.tdat"))
-
-## Create parseable evaluation strings
-tdat.tall.benched$eval.string.lower <- paste0(tdat.tall.benched$eval.string.lower, tdat.tall.benched$Value)
-tdat.tall.benched$eval.string.upper <- paste0(tdat.tall.benched$Value, tdat.tall.benched$eval.string.upper)
-
-## Parse the strings to determing if the value falls within the upper and lower bounds for that benchmark evaluation category
-tdat.tall.benched$meeting <- lapply(tdat.tall.benched$eval.string.lower, parser) %>% unlist() & lapply(tdat.tall.benched$eval.string.upper, parser) %>% unlist()
-
-## Because all the benchmark evaluation categories should be mutually exclusive, applying the vector from $meeting should result in one row per indicator per plot
-## Also restricting this to the relevant columns that are required for the next step
-output <- tdat.tall.benched[tdat.tall.benched$meeting, c("PrimaryKey", "PlotID", "Evaluation.Stratum", "Indicator", "Value", "Evaluation.Category")]
-
+## Applying the benchmarks to a TerrADat data frame.
+benchmarker <- function(benchmarks, ## The data frame imported with read.benchmarks()
+                        tdat, ## The data frame from TerrADat. It needs to already be attributed with evaluation strata
+                        evalstratumfield = "Evaluation.Stratum" ## The field in tdat that contains the evaluation strata
+){
+  ## Sanitization as always
+  names(benchmarks) <- str_to_upper(names(benchmarks))
+  ## In case someone didn't read the instructions and fed in an SPDF
+  if (class(tdat)[1] == "SpatialPointsDataFrame") {
+    tdat <- tdat@data
+  }
+  tdat.fields.indicators.expected <- c('BareSoilCover_FH', 'TotalFoliarCover_FH',
+                                       'GapPct_25_50', 'GapPct_51_100', 'GapPct_101_200', 'GapPct_200_plus', 'GapPct_25_plus',
+                                       'NonInvPerenForbCover_AH', 'NonInvAnnForbCover_AH', 'NonInvPerenGrassCover_AH', 'NonInvAnnGrassCover_AH', 'NonInvAnnForbGrassCover_AH', 'NonInvPerenForbGrassCover_AH', 'NonInvSucculentCover_AH', 'NonInvShrubCover_AH', 'NonInvSubShrubCover_AH', 'NonInvTreeCover_AH',
+                                       'InvPerenForbCover_AH', 'InvAnnForbCover_AH', 'InvPerenGrassCover_AH', 'InvAnnGrassCover_AH', 'InvAnnForbGrassCover_AH', 'InvPerenForbGrassCover_AH', 'InvSucculentCover_AH', 'InvShrubCover_AH', 'InvSubShrubCover_AH', 'InvTreeCover_AH',
+                                       'SagebrushCover_AH',
+                                       'WoodyHgt_Avg', 'HerbaceousHgt_Avg', 'SagebrushHgt_Avg', 'OtherShrubHgt_Avg',
+                                       'NonInvPerenGrassHgt_Avg', 'InvPerenGrassHgt_Avg',
+                                       'InvPlantCover_AH', 'InvPlant_NumSp',
+                                       'SoilStability_All', 'SoilStability_Protected', 'SoilStability_Unprotected',
+                                       ## Remote sensing values
+                                       'HerbLitterCover_FH', 'WoodyLitterCover_FH', 'EmbLitterCover_FH', 'TotalLitterCover_FH', 'RockCover_FH', 'BiologicalCrustCover_FH', 'VagrLichenCover_FH', 'LichenMossCover_FH', 'DepSoilCover_FH', 'WaterCover_FH',
+                                       'NonInvPerenForbCover_FH', 'NonInvAnnForbCover_FH', 'NonInvPerenGrassCover_FH', 'NonInvAnnGrassCover_FH', 'NonInvSucculentCover_FH', 'NonInvShrubCover_FH', 'NonInvSubShrubCover_FH', 'NonInvTreeCover_FH',
+                                       'InvPerenForbCover_FH', 'InvAnnForbCover_FH', 'InvPerenGrassCover_FH', 'InvAnnGrassCover_FH', 'InvSucculentCover_FH', 'InvShrubCover_FH', 'InvSubShrubCover_FH', 'InvTreeCover_FH',
+                                       'SageBrushCover_FH')
+  
+  if (length(tdat.fields.indicators.expected[tdat.fields.indicators.expected %in% names(tdat)]) != length(tdat.fields.indicators.expected)) {
+    print("These expected indicators weren't found in the tdat data frame")
+    print(paste(tdat.fields.indicators.expected[!(tdat.fields.indicators.expected %in% names(tdat))], collapse = ", "))
+    print("All of these are being dropped from consideration and the remaining indicators are being used")
+  }
+  ## Making a tall version of the TerrADat data frame
+  ## Indicators listed in order of appearance in TerrADat, line breaks inserted at thematic breaks
+  tdat.tall <- eval(parse(text = paste0("gather(tdat, Indicator, Value, ",
+                                        paste(tdat.fields.indicators.expected[tdat.fields.indicators.expected %in% names(tdat)],collapse = ", ") %>% str_replace_all("'", ""),
+                                        ")"
+  )
+  ))
+  
+  ## Strip down benchmarks to just the distinct ones that matter because sometimes the same benchmark appears for multiple reasons?
+  benchmarks.distinct <- distinct(benchmarks[, c("EVALUATION.STRATUM", "INDICATOR.TDAT", "EVALUATION.CATEGORY", "EVAL.STRING.LOWER", "EVAL.STRING.UPPER")])
+  
+  ## Merge the tall TerrADat with the benchmark information
+  tdat.tall.benched <- merge(x = tdat.tall,
+                             y = benchmarks.distinct,
+                             by.x = c(names(tdat.tall)[grepl(x = names(tdat.tall), pattern = evalstratumfield, ignore.case = T)], "Indicator"),
+                             by.y = c("EVALUATION.STRATUM", "INDICATOR.TDAT"))
+  
+  ## Create parseable evaluation strings
+  tdat.tall.benched$EVAL.STRING.LOWER <- paste0(tdat.tall.benched$EVAL.STRING.LOWER, tdat.tall.benched$Value)
+  tdat.tall.benched$EVAL.STRING.UPPER <- paste0(tdat.tall.benched$Value, tdat.tall.benched$EVAL.STRING.UPPER)
+  
+  ## Parse the strings to determing if the value falls within the upper and lower bounds for that benchmark evaluation category
+  tdat.tall.benched$meeting <- lapply(tdat.tall.benched$EVAL.STRING.LOWER, parser) %>% unlist() & lapply(tdat.tall.benched$EVAL.STRING.UPPER, parser) %>% unlist()
+  
+  names(tdat.tall.benched) <- str_to_upper(names(tdat.tall.benched))
+  
+  ## Because all the benchmark evaluation categories should be mutually exclusive, applying the vector from $meeting should result in one row per indicator per plot
+  ## Also restricting this to the relevant columns that are required for the next step
+  output <- tdat.tall.benched[tdat.tall.benched$MEETING, c("PRIMARYKEY", "PLOTID", "EVALUATION.STRATUM", "INDICATOR", "VALUE", "EVALUATION.CATEGORY")]
+  names(output) <- str_to_upper(names(output))
+  return(output)
+}
 
 ##########################################################
 #### WRITING OUT DATA ####

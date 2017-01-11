@@ -1,14 +1,28 @@
-#####################################################################
-#### CALCULATING WEIGHTS USING SAMPLE DESIGN DATABASES AND TERRADAT ####
-#####################################################################
-#####load packages####
+##########################################################
+#### FUNCTIONS ####
+##########################################################
 library(tidyverse)
-library(arcgisbinding) #we use this package to read from file geodatabases--it is significantly faster than rOGDB
-arc.check_product()
-library(maptools) #this is for reading in shapefiles
-library(rgdal) # for read in rasters
-library(rgeos)
 library(stringr)
+library(xlsx)
+library(sp)
+library(rgdal)
+library(rgeos)
+library(maptools)
+library(arcgisbinding)
+library(spsurvey)
+arc.check_product()
+
+## A function that evaluates a parsed text string like the ones in $eval.string.upper and lower. Used in a lapply() later. Probably replaceable with parse() %>% eval() there though
+safe.parser <- function(string){
+  output <- safely(eval(parse(text = string)))
+  return(output[[1]])
+}
+
+## For those strange occasions when the safe version gives you errors?
+parser <- function(string){
+  output <- eval(parse(text = string))
+  return(output)
+}
 
 ## A function to make sure that input strings are correctly formatted for filepaths, .gdb filenames, .xlsx filenames, .csv filenames, and .shp filenames
 sanitizer <- function(string, type){
@@ -42,9 +56,221 @@ sanitizer <- function(string, type){
   return(string)
 }
 
-## A function that evaluates a parsed text string like the ones in $eval.string.upper and lower. Used in a lapply() later. Probably replaceable with parse() %>% eval() there though
-parser <- function(string){
-  return(safely(eval(parse(text = string)))[[1]])
+
+#### ATTRIBUTING POINTS WITH VALUES ####
+## Functions for adding a column/field called Evaluation.Stratum (by default) to points
+## for use in benchmark evaluations
+
+## attribute.shapefile() adds from a specified field in a shapefile, either points or polygons
+## attribute.list() adds based on a simple lookup table of PlotID and Evaluation.Stratum
+## attribute.field() adds from a lookup table based on values found in the fields of the points fed to it
+
+
+## Shapefile attribute extraction function where the shapefile attribute table contains the values to assign
+attribute.shapefile <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+                                data.path = "", ## If the shape is in a .gdb feature class then this should be the full path, including the file extension .gdb. If the SPDF is already made, do not specify this argument
+                                shape = "", ## The name of the shapefile or feature class !!!OR!!! an SPDF
+                                attributefield = "", ## Name of the field in the shape that specifies the attribute to assign to the points
+                                newfield = "Evaluation.Stratum", ## Name of the new field in the output to assign the values from attributefield to
+                                projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")){
+  ## Strip the file extension from shape, just in case it was there
+  if (is.character(shape)) {
+    shape <- str_replace(shape, pattern = "\\.[Ss][Hh][Pp]$", replacement = "") 
+  }
+  ## If this is coming from a geodatabase, extract the shapefile appropriately. Otherwise read in the .shp
+  if (grepl(x = data.path, pattern = "\\.[Gg][Dd][Bb]$")) {
+    shape.spdf <- readOGR(dsn = data.path, layer = shape, stringsAsFactors = F) %>% spTransform(projection)
+  } else if (data.path != "") {
+    shape.spdf <- readOGR(dsn = paste0(data.path, "/", shape, ".shp"), layer = shape, stringsAsFactors = F) %>% spTransform(projection)
+  } else if (class(shape)[1] == "SpatialPointsDataFrame" | class(shape)[1] == "SpatialPolygonsDataFrame") {
+    shape.spdf <- shape %>% spTransform(projection)
+  }
+  ## Make sure that the points also adhere to the same projection
+  points <- points %>% spTransform(projection)
+  
+  ## Because there might be overlap between polygons with different evaluation stratum identities, we'll check each eval stratum independently
+  for (n in unique(shape.spdf@data[, attributefield])) {
+    ## Create a copy of the points to work with on this loop
+    current.points <- points
+    ## Get the data frame from checking the points against the current subset of the polygons
+    over.result <- over(current.points, shape.spdf[shape.spdf@data[, attributefield] == n,])
+    ## Add the values to the newfield column
+    current.points@data[, newfield] <- over.result[, attributefield]
+    ## Store the results from this loop using the naming scheme "over__[current value of n]" with spaces replaced with underscores to prevent parsing errors later
+    assign(x = str_replace(paste0("over__", n), " ", "_"),
+           ## Only keep the ones that actually took on an attribute
+           value = current.points[!is.na(current.points@data[, newfield]),])
+  }
+  ## List all the objects in the working environment that start with "over__" and rbind them into a single SPDF
+  attributed.spdfs <- ls()[grepl(x = ls(), pattern = "^over__")]
+  output <- eval(parse(text = paste0("rbind(`", paste(attributed.spdfs, collapse = "`,`") ,"`)")))
+  
+  return(output)
+}
+
+## TODO: make the lut and list functions pull from and assign to arbitrary field names
+
+## Function to import .csv that attributes the plots matching the PLOT column with evaluation strata from the EVAL.STRATUM column
+attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+                           datapath = "", ## Only specify if you need to read in the lookup table from a file
+                           lut = "", ## Either the filename !!!OR!!! a data frame. Either way it needs a (PlotID | PrimaryKey) column and an Evaluation.Stratum column
+                           dropNA = T ## Strip out points that did not qualify for an attribution stratum
+){
+  ## Sanitize the input
+  datapath <- str_replace(datapath, pattern =  "/$", replacement = "")
+  if ((datapath == "" | is.null) & is.data.frame(lut)) {
+    ## The format of the lookup table needs to include Evaluation.Stratum and one of either PlotID or PrimaryKey
+    if (grepl(x = paste(names(lut), collapse = ""), pattern = "PrimaryKey")) {
+      lut <- lut[, c("PrimaryKey", "Evaluation.Stratum")] ## Preferably use the PrimaryKey if both PlotID and PrimaryKey are present
+    } else if (grepl(x = paste(names(lut), collapse = ""), pattern = "PlotID")) {
+      lut <- lut[, c("PlotID", "Evaluation.Stratum")] 
+    }
+  } else if (!is.data.frame(lut) & grepl(x = lut, pattern = "\\.[Cc][Ss][Vv]$")) {
+    lut <- read.csv(paste0(datapath, "/", lut), stringsAsFactors = F)
+    if (grepl(x = paste(names(lut), collapse = ""), pattern = "PrimaryKey")) {
+      lut <- lut[, c("PrimaryKey", "Evaluation.Stratum")]
+    } else if (grepl(x = paste(names(lut), collapse = ""), pattern = "PlotID")) {
+      lut <- lut[, c("PlotID", "Evaluation.Stratum")] 
+    }
+  }
+  output <- merge(points, lut)
+  if (dropNA) {
+    output <- output[!is.na(output$Evaluation.Stratum),]
+  }
+  return(output)
+}
+
+## TODO: Function to import .csv or .xlsx to function as a lookup table with columns for TerrADat/MS field, field values, and evaluation strata
+# attribute.field <- function(points = SpatialPointsDataFrame(coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+#                             data.path = "", ## Only specify if you need to read in the lookup table from a file
+#                             lut = "", ## Either the filename !!!OR!!! a data frame. Either way it needs the columns Attribute.Field, Field.Value, Evaluation.Stratum
+#                             dropNA = T, ## Strip out points that did not qualify for an attribution stratum
+# ){
+#   ## Sanitize the input
+#   data.path <- str_replace(data.path, pattern =  "/$", replacement = "")
+#   if ((data.path == "" | is.null) & is.data.frame(lut)) {
+#     ## The format of the lookup table needs to include these three fields
+#     lut <- lut[, c("Attribute.Field", "Field.Value", "Evaluation.Stratum")]
+#   } else if (!is.data.frame(lut) & grepl(x = lut, pattern = "\\.[Cc][Ss][Vv]$")) {
+#     lut <- read.csv(paste0(datapath, "/", lut), stringsAsFactors = F)[, c("Attribute.Field", "Field.Value", "Evaluation.Stratum")]
+#   }
+#   for (n in 1:nrow(lut)) {
+#     points$Evaluation.Stratum[points[, lut$Attribute.Field[n]] == lut$Attribute.Value[n]] <- lut$Evaluation.Stratum[n]
+#   }
+#   output <- points
+#   if (dropNA) {
+#     output <- output[!is.na(output$Evaluation.Stratum),]
+#   }
+#   return(output)
+# }
+
+
+
+#################################
+### SPECIALIZED FUNCTIONS ###
+#################################
+## Reading in the benchmarks from the Data Explorer
+## TODO: Add capitalization sanitization stuff
+read.benchmarks <- function(data.path = "", ## Path to the folder containing the Data Explorer with the benchmarks in it
+                            benchmarks.filename = "", ## The filename of the Data Explorer workbook
+                            indicator.lut, ## A lookup table with a column called "indicator.name" matching the values in the Data Explorer "Indicator" field and one called "indicator.tdat" with corresponding value for the indicators' names in TerrADat
+                            indicator.lut.benchmarkfield = "indicator.name" ## In case you are ignoring the instructions for indicator.lut
+){
+  ## Sanitizing inputs because users can't be trusted
+  if (!grepl(x = data.path, pattern = "/$")) {
+    data.path <- paste0(data.path, "/")
+  }
+  if (!grepl(x = benchmarks.filename, pattern = "\\.[Xx][Ll][Ss][Xx]$")) {
+    benchmarks.filename <- paste0(benchmarks.filename, ".xlsx")
+  }
+  ## Import the spreadsheet from the workbook. Should work regardless of presence/absence of other spreadsheets as long as the name is the same
+  benchmarks.raw <- read.xlsx(file = paste0(data.path, benchmarks.filename),
+                              sheetName = "Monitoring Objectives",
+                              header = T,
+                              stringsAsFactors = F)
+  
+  ## In case there's a "Classification" column where we'd prefer a "Category" column. This lets us maintain backwards compatibility with older iterations of the spreadsheet
+  names(benchmarks.raw)[names(benchmarks.raw) %in% c("Classification")] <- "Evaluation.Category"
+  
+  ## Strip out the extraneous columns and rows, which includes if they left the example in there
+  benchmarks <- benchmarks.raw[!grepl(x = benchmarks.raw$Management.Question, pattern = "^[Ee].g.") & !is.na(benchmarks.raw$Indicator), 1:12]
+  
+  ## Create the evaluations for the upper and lower limits of each benchmark.
+  ## The way the spreadsheet is configured, there should be no rows without both defined
+  benchmarks$eval.string.lower <- paste(benchmarks$Lower.Limit, benchmarks$LL.Relation)
+  benchmarks$eval.string.upper <- paste(benchmarks$UL.Relation, benchmarks$Upper.Limit)
+  
+  ## Create an evaluation string for future use with the required proportion and its relationship
+  benchmarks$eval.string.proportion[!is.na(benchmarks$Required.Proportion)] <- paste(benchmarks$Proportion.Relation[!is.na(benchmarks$Required.Proportion)], benchmarks$Required.Proportion[!is.na(benchmarks$Required.Proportion)])
+  
+  ## For each benchmark add in the name of the field in TerrADat that corresponds
+  benchmarks <- merge(x = benchmarks, y = indicator.lut, by.x = "Indicator", by.y = indicator.lut.benchmarkfield)
+  
+  return(benchmarks)
+}
+
+## Applying the benchmarks to a TerrADat data frame.
+benchmarker <- function(benchmarks, ## The data frame imported with read.benchmarks()
+                        tdat, ## The data frame from TerrADat. It needs to already be attributed with evaluation strata
+                        evalstratumfield = "Evaluation.Stratum" ## The field in tdat that contains the evaluation strata
+){
+  ## Sanitization as always
+  names(benchmarks) <- str_to_upper(names(benchmarks))
+  ## In case someone didn't read the instructions and fed in an SPDF
+  if (class(tdat)[1] == "SpatialPointsDataFrame") {
+    tdat <- tdat@data
+  }
+  tdat.fields.indicators.expected <- c('BareSoilCover_FH', 'TotalFoliarCover_FH',
+                                'GapPct_25_50', 'GapPct_51_100', 'GapPct_101_200', 'GapPct_200_plus', 'GapPct_25_plus',
+                                'NonInvPerenForbCover_AH', 'NonInvAnnForbCover_AH', 'NonInvPerenGrassCover_AH', 'NonInvAnnGrassCover_AH', 'NonInvAnnForbGrassCover_AH', 'NonInvPerenForbGrassCover_AH', 'NonInvSucculentCover_AH', 'NonInvShrubCover_AH', 'NonInvSubShrubCover_AH', 'NonInvTreeCover_AH',
+                                'InvPerenForbCover_AH', 'InvAnnForbCover_AH', 'InvPerenGrassCover_AH', 'InvAnnGrassCover_AH', 'InvAnnForbGrassCover_AH', 'InvPerenForbGrassCover_AH', 'InvSucculentCover_AH', 'InvShrubCover_AH', 'InvSubShrubCover_AH', 'InvTreeCover_AH',
+                                'SagebrushCover_AH',
+                                'WoodyHgt_Avg', 'HerbaceousHgt_Avg', 'SagebrushHgt_Avg', 'OtherShrubHgt_Avg',
+                                'NonInvPerenGrassHgt_Avg', 'InvPerenGrassHgt_Avg',
+                                'InvPlantCover_AH', 'InvPlant_NumSp',
+                                'SoilStability_All', 'SoilStability_Protected', 'SoilStability_Unprotected',
+                                ## Remote sensing values
+                                'HerbLitterCover_FH', 'WoodyLitterCover_FH', 'EmbLitterCover_FH', 'TotalLitterCover_FH', 'RockCover_FH', 'BiologicalCrustCover_FH', 'VagrLichenCover_FH', 'LichenMossCover_FH', 'DepSoilCover_FH', 'WaterCover_FH',
+                                'NonInvPerenForbCover_FH', 'NonInvAnnForbCover_FH', 'NonInvPerenGrassCover_FH', 'NonInvAnnGrassCover_FH', 'NonInvSucculentCover_FH', 'NonInvShrubCover_FH', 'NonInvSubShrubCover_FH', 'NonInvTreeCover_FH',
+                                'InvPerenForbCover_FH', 'InvAnnForbCover_FH', 'InvPerenGrassCover_FH', 'InvAnnGrassCover_FH', 'InvSucculentCover_FH', 'InvShrubCover_FH', 'InvSubShrubCover_FH', 'InvTreeCover_FH',
+                                'SageBrushCover_FH')
+
+  if (length(tdat.fields.indicators.expected[tdat.fields.indicators.expected %in% names(tdat)]) != length(tdat.fields.indicators.expected)) {
+    print("These expected indicators weren't found in the tdat data frame")
+    print(paste(tdat.fields.indicators.expected[!(tdat.fields.indicators.expected %in% names(tdat))], collapse = ", "))
+    print("All of these are being dropped from consideration and the remaining indicators are being used")
+  }
+  ## Making a tall version of the TerrADat data frame
+  ## Indicators listed in order of appearance in TerrADat, line breaks inserted at thematic breaks
+  tdat.tall <- eval(parse(text = paste0("gather(tdat, Indicator, Value, ",
+                paste(tdat.fields.indicators.expected[tdat.fields.indicators.expected %in% names(tdat)],collapse = ", ") %>% str_replace_all("'", ""),
+                ")"
+                )
+         ))
+  
+  ## Strip down benchmarks to just the distinct ones that matter because sometimes the same benchmark appears for multiple reasons?
+  benchmarks.distinct <- distinct(benchmarks[, c("EVALUATION.STRATUM", "INDICATOR.TDAT", "EVALUATION.CATEGORY", "EVAL.STRING.LOWER", "EVAL.STRING.UPPER")])
+  
+  ## Merge the tall TerrADat with the benchmark information
+  tdat.tall.benched <- merge(x = tdat.tall,
+                             y = benchmarks.distinct,
+                             by.x = c(names(tdat.tall)[grepl(x = names(tdat.tall), pattern = evalstratumfield, ignore.case = T)], "Indicator"),
+                             by.y = c("EVALUATION.STRATUM", "INDICATOR.TDAT"))
+  
+  ## Create parseable evaluation strings
+  tdat.tall.benched$EVAL.STRING.LOWER <- paste0(tdat.tall.benched$EVAL.STRING.LOWER, tdat.tall.benched$Value)
+  tdat.tall.benched$EVAL.STRING.UPPER <- paste0(tdat.tall.benched$Value, tdat.tall.benched$EVAL.STRING.UPPER)
+  
+  ## Parse the strings to determing if the value falls within the upper and lower bounds for that benchmark evaluation category
+  tdat.tall.benched$meeting <- lapply(tdat.tall.benched$EVAL.STRING.LOWER, parser) %>% unlist() & lapply(tdat.tall.benched$EVAL.STRING.UPPER, parser) %>% unlist()
+  
+  names(tdat.tall.benched) <- str_to_upper(names(tdat.tall.benched))
+  
+  ## Because all the benchmark evaluation categories should be mutually exclusive, applying the vector from $meeting should result in one row per indicator per plot
+  ## Also restricting this to the relevant columns that are required for the next step
+  output <- tdat.tall.benched[tdat.tall.benched$MEETING, c("PRIMARYKEY", "PLOTID", "EVALUATION.STRATUM", "INDICATOR", "VALUE", "EVALUATION.CATEGORY")]
+  names(output) <- str_to_upper(names(output))
+  return(output)
 }
 
 ## TODO: Should try to handle raster location/import either within sdd.reader() or as an independent function
@@ -176,9 +402,9 @@ sdd.reader <- function(src = "", ## A filepath as a string
   return(output)
 }
 
-## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
-## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## TODO: Needs to use PRIMARYKEYs instead of PLOTIDs because those are unique between sampling events when there is more than one
+## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
+## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
                      tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
@@ -402,159 +628,75 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
 }
 
-## Currently uncalled
-# ## A function for clipping polygons
-# gClip <- function(frame, ## SpatialPolygonsDataFrame to be clipped
-#                   clip ## SpatialPolygonsDataFrame defining the extent to clip to
-#                   ) {
-#   clipped <- gIntersection(frame, clip, byid = T)
-#   row.names(clipped) <- as.character(gsub(" 0", "", row.names(clipped)))
-#   return(SpatialPolygonsDataFrame(clipped, frame@data[row.names(clipped), ]))
-# }
-# 
-# ## A function for removing polygons. NB: This is quite slow right now
-# gErase <- function(frame,erase) {
-#   gDifference(frame, erase)
-# }
+analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
+                     weights, ## The list output from weighter()
+                     tdat ## The attributed TerrADat that has the reporting units
+                     ) {
+  ## Splitting out the weighter() output
+  stratum.weights <- weights[[1]]
+  point.weights <- weights[[2]]
+  ## Sanitization
+  names(evaluated.points) <- str_to_upper(names(evaluated.points))
+  names(stratum.weights) <- str_to_upper(names(stratum.weights))
+  names(point.weights) <- str_to_upper(names(point.weights))
+  if (class(tdat)[1] == "SpatialPointsDataFrame") {
+    tdat <- tdat@data
+  }
+  names(tdat) <- str_to_upper(names(tdat))
+  
+  ## Then we combine them!
+  data <- merge(x = evaluated.points, y = point.weights)
+  
+  ## We're going to add ".ind" to the end of each indicator name so we can find them easily later with a select() after we've spread() this data frame
+  data$INDICATOR <- paste0(data$INDICATOR, ".ind") %>% as.factor()
+  
+  ## Make the data set wide because that's the format that makes our lives easier for cat.analysis()
+  data.wide <- spread(data = data, ## Data frame to make wide
+                      key = INDICATOR, ## Column that contains the column names
+                      value = EVALUATION.CATEGORY, ## Column that contains the values
+                      fill = NA ## Where there's an NA, fill it with 0
+  )
+  
+  ## Add in the reporting unit information from the supplied TerrADat
+  data.wide <- merge(data.wide, tdat[, c("PRIMARYKEY", "REPORTING.UNIT", "LONGITUDE", "LATITUDE")], by.x = c("PRIMARYKEY"), by.y = c("PRIMARYKEY"))
 
-##########################################################
-#### GLOBAL VARIABLES ####
-##########################################################
-###Set Data Sources####
-## Filepath containing the Sample Design Database[s]. Use the first line if it's not a subdirectory of the working directory
-# src <- "C:\\Users\\samccord\\Documents\\AIM\\Projects\\NorCal\\" %>% sanitizer(type = "filepath")
-src <- paste(getwd(),
-             "data", ## This is the subdirectory path. It can be multiple layers deep, e.g. "data/norcal/test_set"
-             sep = "/") %>% sanitizer(type = "filepath")
-
-## Vector of SDD filenames. There can be more than one SDD in the vector.
-sdd.src <- c("SDD_NorCal_2013extensive_SDD.gdb",
-             "SDD_NorCal_2013intensive_SDD.gdb",
-             "SDD_NorCal_2013ESR_SDD.gdb", 
-             "SDD_NorCal_2014-2018_SDD_122116.gdb",
-             "SDD_NorCal_2014intensive_SDD.gdb") %>% sapply(sanitizer, type = "gdb", USE.NAMES = F)
-
-## Where is the TerrADat .gdb?
-tdat.path <- paste0(getwd(), "/", "data") %>% sanitizer(type = "filepath")
-
-## What is the filename of the TerrADat .gdb?
-tdat.name <- "Terradat_data_8.17.15_complete.gdb" %>% sanitizer(type = "gdb")
-
-##Set the source of the reporting unit.
-## The vector can contain any number of filenames, but these are expected/need to be .shp files in the directory src
-reporting.unit.src <- c("Eagle_Lake_FO.shp",
-                        "Twin_Peaks.shp")  %>% sapply(sanitizer, type = "shp", USE.NAMES = F)
-
-
-###Set Output Files####
-## Set the filepath for the output file. Use the first line if it's not a subdirectory of the working directory
-out.src <- "data" %>% sanitizer(type = "filepath")
-## If out.src is a subdirectory path within the working directory, follow the previous line with this.
-## If out.src is a full filepath in its own right, comment it out
-out.src <- paste0(getwd(), "/", out.src)
-
-out.filename <- "ELFO_TwinPeaks" #set the file name, of the structure: FO_Project
-
-
-
-##########################################################
-#### IMPORTING DATA ####
-##########################################################
-#### Step 1: Read in Files#####
-
-###First, the SDDs#### 
-sdd.raw <- sdd.reader(src = src, sdd.src = c("SDD_NorCal_2014intensive_SDD.gdb"))
-
-## Get TerrADat imported
-tdat.terrestrial.spdf <- readOGR(dsn = paste0(tdat.path, tdat.name), layer = "SV_IND_TERRESTRIALAIM", stringsAsFactors = F)
-tdat.remote.spdf <- readOGR(dsn = paste0(tdat.path, tdat.name), layer = "SV_IND_REMOTESENSING", stringsAsFactors = F)
-tdat.prj <- proj4string(tdat.terrestrial.spdf)
-tdat.spdf <- merge(tdat.terrestrial.spdf, tdat.remote.spdf)
-tdat <- tdat.spdf@data
-
-#Step 1a: If no.strata has values in it, examine those values to determine if the strata are a) rasters or b) do not exist. 
-#If the strata are rasters, then use the following code to read in the raster strata, with the prefix "strata."
-###-->Jason
-
-###Then the Reporting Units###
-for (r in reporting.unit.src) {
-  assign(x = paste0("rep.", r),
-         value = readShapePoly(fn = paste(src, r, sep = "/"),
-                               ## The standard NAD83 projection. Used in the SDD
-                               proj4string = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")))
-  #remove intermediate objects
-  rm(r)
+  ## Because it's easier to do this now while the data frame is still just one object and not four or five
+  names(data.wide)[names(data.wide) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
+  ## All the sites are active? Sure! Why not?
+  data.wide$Active <- T
+    
+  ######  
+  ### These are all things that cat.analysis needs
+  ######
+  ## First, the sites. This is a data frame with the siteIDs and whether they're active or not
+  aim.sites <- data.wide[, c("siteID", "Active")] %>% distinct()
+  
+  ## TODO: Programmatically generate this
+  ## The subpopulations. This is a data frame of the siteIDs and reporting units. I think each siteID can only appear once, so we need to programmatically create this from the tall data frame
+  aim.subpop <- data.wide[, c("siteID", "Reporting.Unit")]
+  
+  ## The design information
+  aim.design <- data.wide[, c("siteID", "wgt", "xcoord", "ycoord")] %>% distinct()
+  
+  ## The data. A data frame with siteID and columns for each indicator (with the evaluation category strings as factors)
+  aim.datacat <- data.wide %>% dplyr::select(siteID, matches("\\.ind$"))
+  
+  ## TODO: Think abot how to get sum of wgt by stratum and set up a stratified aim.popsize list
+  ## The areas should be the sum of the weights, right?
+  areas.df <- data.wide %>% group_by(Reporting.Unit) %>% summarize(area = sum(wgt))
+  ## So we're converting them to a list
+  area.list <- list(areas.df$area)
+  ## And naming them with the reporting unit they belong to
+  names(area.list) <- areas.df$Reporting.Unit
+  
+  ## This example is for unstratified sampling (also for simplicity) for stratified, need to add the stratum field to the design data frame
+  ## and add the stratum areas to the popsize list
+  aim.popsize = list("Reporting.Unit" = area.list)
+  
+  ### Now run cat.analysis
+  aim.analysis <- cat.analysis(sites = aim.sites, subpop = aim.subpop, design = aim.design, data.cat = aim.datacat, popsize = aim.popsize)
+  
+  output <- aim.analysis
+  
+  return(output)
 }
-
-##########################################################
-#### CREATE WEIGHT CATEGORIES ####
-##########################################################
-first.pass.weights <- weighter(sdd.import = sdd.raw, tdat = tdat)
-
-###Step 2: Create Weight Categories
-
-
-#Step 2b: Intersect each sample frame polygon with each reporting unit to determine a) if they overlap and b) if one is contained within the other
-#I haven't figured out how to determine the overlapping order automatically, yet. So at this point it is a manual step to figure out overlapping designs
-
-
-
-
-#Once you know the overlap order, you can determine weight categories
-#These categories should be of the form Reporting.Unit_SampleFrame
-
-#With the general sample frame weight categories in place, you can then add strata as appropriate
-#In the case of NorCal, strata are relevate for the 2013ESR design and the 2014-2018 design category
-#Weight category should be
-
-
-##########################################################
-#### CALCULATE WEIGHTS ####
-##########################################################
-## and so begins Garman's folly
-## Step 3.  Cycle thru all the SDDs and generate pt weight estimates for each separately.  We'll deal with other weightings 
-##          (e.g., a FO, overlapping designs) in subsequent steps.
-
-
-## For each SDD sample frame (specified in sdd.src), adjust the sampled area (account for non-responses), generate weights,
-## update the pts file with weights, tabulate area and pt information (this table is a quick summary for internal purposes),
-## & generate the .csv file with attributes listed in Step 7 below. 
-
-
-
-
-
-
-
-###Step 4 Calculate # points in each weight category, use the SDD pts but verify that all TerrADat points are accounted for
-
-### Step 5: Produce weights (area/#weights in each weigth category)
-
-##########################################################
-#### CREATE AND WRITE OUTPUT ####
-##########################################################
-### Step 6: Join weights to the points df, called wgt.df
-
-
-#Step 6a: Check that the points in TerrADat are all accounted for
-
-### Step 7: Write output
-###write out results, field names should be: 
-#PrimaryKey(from SDD), 
-#PlotID.SDD (from SDD), 
-#FINAL_DESIG (from SDD, no not a typo), this is the point fate
-#Reporting Unit (from intersection)
-#Wgt.Category (from intersection), should be of the form ReportingUnit_Stratum/MDCaty
-#Wgt
-#PlotID.TDAT (PlotID from TerrADat)
-
-
-write.csv(wgt.df, file = paste0(out.src, out.filename, "_wgt_", Sys.Date()))
-
-
-
-###Build Weights Table###
-
-
-
-
