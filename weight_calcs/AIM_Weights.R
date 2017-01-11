@@ -386,7 +386,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   
   ## Adding in the TerrADat attributes because we need those primary keys
   ## TODO: Figure out where PrimaryKey actually lives, because it's not my copy of TerrADat
-  pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")], x = tdat[, c("PLOTID", "PRIMARYKEY")], by.y = c("TERRA_TERRADAT_ID"), by.x = "PLOTID", all = F)
+  pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
+                                  x = tdat[, c("PLOTID", "PRIMARYKEY")],
+                                  by.y = c("TERRA_TERRADAT_ID"),
+                                  by.x = "PLOTID", all = F)
   
   ## Diagnostics in case something goes pear-shaped
   if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
