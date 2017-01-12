@@ -249,7 +249,7 @@ benchmarker <- function(benchmarks, ## The data frame imported with read.benchma
          ))
   
   ## Strip down benchmarks to just the distinct ones that matter because sometimes the same benchmark appears for multiple reasons?
-  benchmarks.distinct <- distinct(benchmarks[, c("EVALUATION.STRATUM", "INDICATOR.TDAT", "EVALUATION.CATEGORY", "EVAL.STRING.LOWER", "EVAL.STRING.UPPER")])
+  benchmarks.distinct <- distinct(benchmarks[, c("MANAGEMENT.QUESTION", "EVALUATION.STRATUM", "INDICATOR.TDAT", "EVALUATION.CATEGORY", "EVAL.STRING.LOWER", "EVAL.STRING.UPPER")])
   
   ## Merge the tall TerrADat with the benchmark information
   tdat.tall.benched <- merge(x = tdat.tall,
@@ -268,7 +268,7 @@ benchmarker <- function(benchmarks, ## The data frame imported with read.benchma
   
   ## Because all the benchmark evaluation categories should be mutually exclusive, applying the vector from $meeting should result in one row per indicator per plot
   ## Also restricting this to the relevant columns that are required for the next step
-  output <- tdat.tall.benched[tdat.tall.benched$MEETING, c("PRIMARYKEY", "PLOTID", "EVALUATION.STRATUM", "INDICATOR", "VALUE", "EVALUATION.CATEGORY")]
+  output <- tdat.tall.benched[tdat.tall.benched$MEETING, c("PRIMARYKEY", "PLOTID", "MANAGEMENT.QUESTION", "EVALUATION.STRATUM", "INDICATOR", "VALUE", "EVALUATION.CATEGORY")]
   names(output) <- str_to_upper(names(output))
   return(output)
 }
