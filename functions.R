@@ -249,7 +249,7 @@ benchmarker <- function(benchmarks, ## The data frame imported with read.benchma
          ))
   
   ## Strip down benchmarks to just the distinct ones that matter because sometimes the same benchmark appears for multiple reasons?
-  benchmarks.distinct <- distinct(benchmarks[, c("EVALUATION.STRATUM", "INDICATOR.TDAT", "EVALUATION.CATEGORY", "EVAL.STRING.LOWER", "EVAL.STRING.UPPER")])
+  benchmarks.distinct <- distinct(benchmarks[, c("MANAGEMENT.QUESTION", "EVALUATION.STRATUM", "INDICATOR.TDAT", "EVALUATION.CATEGORY", "EVAL.STRING.LOWER", "EVAL.STRING.UPPER")])
   
   ## Merge the tall TerrADat with the benchmark information
   tdat.tall.benched <- merge(x = tdat.tall,
@@ -268,7 +268,7 @@ benchmarker <- function(benchmarks, ## The data frame imported with read.benchma
   
   ## Because all the benchmark evaluation categories should be mutually exclusive, applying the vector from $meeting should result in one row per indicator per plot
   ## Also restricting this to the relevant columns that are required for the next step
-  output <- tdat.tall.benched[tdat.tall.benched$MEETING, c("PRIMARYKEY", "PLOTID", "EVALUATION.STRATUM", "INDICATOR", "VALUE", "EVALUATION.CATEGORY")]
+  output <- tdat.tall.benched[tdat.tall.benched$MEETING, c("PRIMARYKEY", "PLOTID", "MANAGEMENT.QUESTION", "EVALUATION.STRATUM", "INDICATOR", "VALUE", "EVALUATION.CATEGORY")]
   names(output) <- str_to_upper(names(output))
   return(output)
 }
@@ -650,53 +650,76 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
   ## We're going to add ".ind" to the end of each indicator name so we can find them easily later with a select() after we've spread() this data frame
   data$INDICATOR <- paste0(data$INDICATOR, ".ind") %>% as.factor()
   
-  ## Make the data set wide because that's the format that makes our lives easier for cat.analysis()
-  data.wide <- spread(data = data, ## Data frame to make wide
-                      key = INDICATOR, ## Column that contains the column names
-                      value = EVALUATION.CATEGORY, ## Column that contains the values
-                      fill = NA ## Where there's an NA, fill it with 0
-  )
+  ## Initialize the output data frame
+  output <- data.frame()
   
-  ## Add in the reporting unit information from the supplied TerrADat
-  data.wide <- merge(data.wide, tdat[, c("PRIMARYKEY", "REPORTING.UNIT", "LONGITUDE", "LATITUDE")], by.x = c("PRIMARYKEY"), by.y = c("PRIMARYKEY"))
-
-  ## Because it's easier to do this now while the data frame is still just one object and not four or five
-  names(data.wide)[names(data.wide) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
-  ## All the sites are active? Sure! Why not?
-  data.wide$Active <- T
+  ## The actual analysis will be done on a per-objective level, so we're just going to loop through those because apply() is kind of a pain and this is computationally cheap enough (I think)
+  for (o in unique(data$MANAGEMENT.QUESTION)) {
+    data.current <- data[data$MANAGEMENT.QUESTION == o,]
     
-  ######  
-  ### These are all things that cat.analysis needs
-  ######
-  ## First, the sites. This is a data frame with the siteIDs and whether they're active or not
-  aim.sites <- data.wide[, c("siteID", "Active")] %>% distinct()
+    ## Make the data set wide because that's the format that makes our lives easier for cat.analysis()
+    ## Need to remove the columns Value and so that each plot ends up existing on just one row per evaluation stratum it has membership in
+    data.wide.current <- spread(data = data.current %>% select(-VALUE, -EVALUATION.STRATUM), ## Data frame to make wide
+                                key = INDICATOR, ## Column that contains the column names
+                                value = EVALUATION.CATEGORY, ## Column that contains the values
+                                fill = NA ## Where there's an NA, fill it with 0
+    )
+    
+    ## Add in the reporting unit information from the supplied TerrADat
+    data.wide.current <- merge(x = data.wide.current,
+                               y = tdat[, c("PRIMARYKEY", "REPORTING.UNIT", "LONGITUDE", "LATITUDE")],
+                               by.x = c("PRIMARYKEY"),
+                               by.y = c("PRIMARYKEY"))
+    
+    ## Because it's easier to do this now while the data frame is still just one object and not four or five
+    names(data.wide.current)[names(data.wide.current) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
+    ## All the sites are active? Sure! Why not?
+    data.wide.current$Active <- T
+    
+    ## First, the sites. This is a data frame with the siteIDs and whether they're active or not
+    aim.sites <- data.wide.current[, c("siteID", "Active")] %>% distinct()
+    
+    ## The subpopulations. This is a data frame of the siteIDs and reporting units. I think each siteID can only appear once, so we need to programmatically create this from the tall data frame
+    aim.subpop <- data.wide.current[, c("siteID", "Reporting.Unit")] %>% distinct()
+    
+    ## The design information
+    aim.design <- data.wide.current[, c("siteID", "wgt", "xcoord", "ycoord")] %>% distinct()
+    
+    ## The data. A data frame with siteID and columns for each indicator (with the evaluation category strings as factors)
+    aim.datacat <- data.wide.current %>% dplyr::select(siteID, matches("\\.ind$")) %>% distinct()
+    ## Fix the names of the indicators so that the output doesn't include the ".ind" suffix which interferes with the automated report knitting
+    names(aim.datacat) <- names(aim.datacat) %>% str_replace_all("\\.ind$", "")
+    
+    ## TODO: Think abot how to get sum of wgt by stratum and set up a stratified aim.popsize list
+    ## The areas should be the sum of the weights, right?
+    areas.df <- data.wide.current %>% group_by(Reporting.Unit) %>% summarize(area = sum(wgt))
+    ## So we're converting them to a list
+    area.list <- list(areas.df$area)
+    ## And naming them with the reporting unit they belong to
+    names(area.list) <- areas.df$Reporting.Unit
+    
+    ## This example is for unstratified sampling (also for simplicity) for stratified, need to add the stratum field to the design data frame
+    ## and add the stratum areas to the popsize list
+    aim.popsize = list("Reporting.Unit" = area.list)
+    
+    ### Now run cat.analysis
+    aim.analysis <- cat.analysis(sites = aim.sites, subpop = aim.subpop, design = aim.design, data.cat = aim.datacat, popsize = aim.popsize)
+    
+    ## Add the objective/management question info to those results
+    aim.analysis$MANAGEMENT.QUESTION <- o
+    
+    ## rbind() these results to the output data frame
+    # output < rbind(output, aim.analysis)
+    
+    ### Assign that to an object we can call later to combine all the loop results
+    assign(paste0(str_replace_all(o, " ", "."), ".analysis.output"), aim.analysis)
+  }
   
-  ## TODO: Programmatically generate this
-  ## The subpopulations. This is a data frame of the siteIDs and reporting units. I think each siteID can only appear once, so we need to programmatically create this from the tall data frame
-  aim.subpop <- data.wide[, c("siteID", "Reporting.Unit")]
+  ## Make a list of all the names of data frames that came out of that loop
+  extant.results <- ls()[grepl(x = ls(), pattern = "\\.analysis.output$")]
   
-  ## The design information
-  aim.design <- data.wide[, c("siteID", "wgt", "xcoord", "ycoord")] %>% distinct()
-  
-  ## The data. A data frame with siteID and columns for each indicator (with the evaluation category strings as factors)
-  aim.datacat <- data.wide %>% dplyr::select(siteID, matches("\\.ind$"))
-  
-  ## TODO: Think abot how to get sum of wgt by stratum and set up a stratified aim.popsize list
-  ## The areas should be the sum of the weights, right?
-  areas.df <- data.wide %>% group_by(Reporting.Unit) %>% summarize(area = sum(wgt))
-  ## So we're converting them to a list
-  area.list <- list(areas.df$area)
-  ## And naming them with the reporting unit they belong to
-  names(area.list) <- areas.df$Reporting.Unit
-  
-  ## This example is for unstratified sampling (also for simplicity) for stratified, need to add the stratum field to the design data frame
-  ## and add the stratum areas to the popsize list
-  aim.popsize = list("Reporting.Unit" = area.list)
-  
-  ### Now run cat.analysis
-  aim.analysis <- cat.analysis(sites = aim.sites, subpop = aim.subpop, design = aim.design, data.cat = aim.datacat, popsize = aim.popsize)
-  
-  output <- aim.analysis
+  ## Bind together all the data frames listed in extant.results
+  output <- parser(string = paste0("rbind(`", paste(extant.results, collapse = "`, `"), "`)"))
   
   return(output)
 }
