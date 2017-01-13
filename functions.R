@@ -412,11 +412,12 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
                      target.values = c("Target Sampled"),
                      unknown.values = c("Unknown",
-                                        "UNK",
-                                        NA),
+                                        "UNK"),
                      nontarget.values = c("Non-Target",
                                           "NT",
-                                          "Inaccessible"),
+                                          "Inaccessible",
+                                          "Not Needed",
+                                          NA),
                      ## These shouldn't need to be changed from these defaults, but better to add that functionality now than regret not having it later
                      fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
@@ -439,11 +440,13 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      "Target Sampled") %>% unique() %>% str_to_upper()
   unknown.values <- c(unknown.values,
                       "Unknown",
-                      "UNK",
-                      NA) %>% unique() %>% str_to_upper()
+                      "UNK") %>% unique() %>% str_to_upper()
   nontarget.values <- c(nontarget.values,
                         "Non-Target",
-                        "NT") %>% unique() %>% str_to_upper()
+                        "NT",
+                        "Inaccessible",
+                        "Not Needed",
+                        NA) %>% unique() %>% str_to_upper()
   
   ## for each sample frame...
   for (s in names(sdd.import$sf)) {
