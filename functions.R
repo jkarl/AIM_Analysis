@@ -702,6 +702,58 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
 }
 
+# The wgtcats are the unique combinations you get when overlaying design strata and reporting unit
+# The WGT on points NEEDS to be the result of having run weighter() on the SDD restricted to the data frame
+
+weight.adjuster <- function(points, ## The weighted output from weighter(), so weighter()["point.weights"] | weighter()[2] IF YOU RESTRICTED THE SDD INPUT BY THE REPORTING UNIT POLYGON
+                            points.wgtcat.field, ## The name of the field in the points data frame that the wgtcat is in
+                            wgtcat.spdf, ## The SPDF that's represents all the weird possible combinations of the reporting unit and strata
+                            spdf.area.field, ## The name of the field in the SPDF that contains the areas of the weight categories
+                            spdf.wgtcat.field, ## The name of the field in the SPDF that contains the areas of the weight categories' areas
+                            projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## NAD83 projection, standard issue as always
+){
+  ## Sanitization
+  names(points) <- str_to_upper(names(points))
+  names(wgtcat.spdf@data) <- str_to_upper(names(wgtcat.spdf@data))
+  points.wgtcat.field <- str_to_upper(points.wgtcat.field)
+  spdf.area.field <- str_to_upper(spdf.area.field)
+  spdf.wgtcat.field <- str_to_upper(spdf.wgtcat.field)
+  
+  ## Convert points to an SPDF
+  points.spdf <- SpatialPointsDataFrame(coords = points[, c("Longitude", "Latitude")],
+                                        data = points,
+                                        proj4string = projection)
+  
+  ## Attribute the points.spdf with the wgtcat identities from wgtcat.spdf
+  points.spdf <- attribute.shapefile(points = points.spdf,
+                                     shape = wgtcat.spdf,
+                                     attributefield = spdf.wgtcat.field,
+                                     newfield = points.wgtcat.field)
+  
+  ## The weighted points attributed by the combination of reporting units and strata
+  ## We first restrict to the points that inherited identities (this should've already happened in the previous step, but just to be safe)
+  data.current <- data.attributed[!is.na(data.attributed[, points.wgtcat.field]),]
+  
+  ## We want to include all the points. So we make a logical vector of just T with a length equal to the number of plots
+  sites.current <- (rep(T, nrow(data.current)))
+  
+  ## Grab the current weights from those points as its own vector
+  wgt.current <- data.current$WGT
+  
+  ## NB: The identity inherited from the shapefile needs to match the field used for name in framesize
+  wtcat.current <- data.current[, points.wgtcat.field]
+  
+  ## The framesize information about each of the unique wgtcat identities
+  ## I currently have this as an area, but I think it needs to be the inverse of the proportion of the area of the reporting unit that each identity represents
+  ## so the framesize value for a particular wgtcat = [area of the whole spdf]/[area of particular wgtcat]
+  framesize.current <- spdf@data[, spdf.area.field]
+  names(framesize.current) <- spdf@data[, spdf.wgtcat.field]
+  
+  ## Run the weight adjustment
+  output <- adjwgt(sites.current, wgt.current, wtcat.current, framesize.current)
+  return(output)
+}
+
 analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
                      weights, ## The list output from weighter()
                      tdat ## The attributed TerrADat that has the reporting units
