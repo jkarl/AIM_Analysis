@@ -407,6 +407,8 @@ sdd.reader <- function(src = "", ## A filepath as a string
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
                      # tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
+                     reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
                      ## Assumes the following keywords are sufficient and consistent.
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
@@ -423,10 +425,15 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
                      designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
 ){
+  ## Sanitization
   names(tdat) <- str_to_upper(names(tdat))
+  if (!is.null(reporting.units.spdf)) {
+    names(reporting.units.spdf@data) <- str_to_upper(names(reporting.units.spdf@data))
+  }
   fatefieldname <- str_to_upper(fatefieldname)
   pointstratumfieldname <- str_to_upper(pointstratumfieldname)
   designstratumfield <- str_to_upper(designstratumfield)
+  reportingunitfield <- str_to_upper(reportingunitfield)
   
   ## Initialize data frame for stratum info. The results from each loop end up bound to this
   master.df <- NULL
