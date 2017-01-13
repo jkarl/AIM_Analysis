@@ -165,6 +165,61 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
 # }
 
 
+intersecter <- function(spdf1,
+                        spdf1.attributefieldname.input,
+                        spdf1.attributefieldname.output,
+                        spdf2,
+                        spdf2.attributefieldname.input,
+                        spdf2.attributefieldname.output,
+                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")
+                        ){
+  ## Find the intersection of the two SPDFs
+  intersect.sp <- gIntersection(spgeom1 = spdf1 %>% spTransform(projection),
+                                spgeom2 = spdf2 %>% spTransform(projection),
+                                byid = T,
+                                drop_lower_td = T)
+  
+  ## Turn the SP into a SPDF
+  intersect.spdf <- SpatialPolygonsDataFrame(Sr = intersect.sp,
+                                             data = data.frame(row.names = getSpPPolygonsIDSlots(intersect.sp)))
+  
+  ## Populate the empty @data with the attributes from the two SPDFs
+  intersect.spdf.attribute <- attribute.shapefile(points = intersect.spdf,
+                                                  shape = spdf1,
+                                                  attributefield = spdf1.attributefieldname.input,
+                                                  newfield = spdf1.attributefieldname.output)
+  
+  intersect.spdf.attribute <- attribute.shapefile(points = intersect.spdf.attribute,
+                                                  shape = spdf2,
+                                                  attributefield = spdf2.attributefieldname.input,
+                                                  newfield = spdf2.attributefieldname.output)
+  
+  ## Create a single field to serve as a unique identifier to dissolve the polygons by
+  intersect.spdf.attribute@data$unique.identifier <- paste(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
+                                                           intersect.spdf.attribute@data[, spdf2.attributefieldname.output],
+                                                           sep = "twas_brillig")
+  
+  ## Dissolve the polygons
+  dissolve.sp <- gUnaryUnion(test.spdf, id = test.spdf@data$unique.combo)
+  
+  ## Turn the SP into a SPDF
+  dissolve.spdf <- SpatialPolygonsDataFrame(Sr = dissolve.sp,
+                                            data = data.frame(row.names = getSpPPolygonsIDSlots(dissolve.sp)))
+  
+  ## Add the unique identifier
+  dissolve.spdf.attribute <- attribute.shapefile(points = dissolve.spdf,
+                                                 shape = intersect.spdf.attribute,
+                                                 attributefield = "unique.identifier",
+                                                 newfield = "unique.identifier")
+  
+  ## Crack the unique identifier into the fields it came from
+  for (n in dissolve.spdf.attribute@data$unique.identifier) {
+    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf1.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][1]
+    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf2.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][2]
+  }
+  
+  return(dissolve.spdf.attribute)
+}
 
 #################################
 ### SPECIALIZED FUNCTIONS ###
@@ -406,26 +461,34 @@ sdd.reader <- function(src = "", ## A filepath as a string
 ## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
-                     tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     # tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
+                     reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
                      ## Assumes the following keywords are sufficient and consistent.
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
                      target.values = c("Target Sampled"),
                      unknown.values = c("Unknown",
-                                        "UNK",
-                                        NA),
+                                        "UNK"),
                      nontarget.values = c("Non-Target",
                                           "NT",
-                                          "Inaccessible"),
+                                          "Inaccessible",
+                                          "Not Needed",
+                                          NA),
                      ## These shouldn't need to be changed from these defaults, but better to add that functionality now than regret not having it later
                      fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
                      designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
 ){
+  ## Sanitization
   names(tdat) <- str_to_upper(names(tdat))
+  if (!is.null(reporting.units.spdf)) {
+    names(reporting.units.spdf@data) <- str_to_upper(names(reporting.units.spdf@data))
+  }
   fatefieldname <- str_to_upper(fatefieldname)
   pointstratumfieldname <- str_to_upper(pointstratumfieldname)
   designstratumfield <- str_to_upper(designstratumfield)
+  reportingunitfield <- str_to_upper(reportingunitfield)
   
   ## Initialize data frame for stratum info. The results from each loop end up bound to this
   master.df <- NULL
@@ -439,11 +502,13 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      "Target Sampled") %>% unique() %>% str_to_upper()
   unknown.values <- c(unknown.values,
                       "Unknown",
-                      "UNK",
-                      NA) %>% unique() %>% str_to_upper()
+                      "UNK") %>% unique() %>% str_to_upper()
   nontarget.values <- c(nontarget.values,
                         "Non-Target",
-                        "NT") %>% unique() %>% str_to_upper()
+                        "NT",
+                        "Inaccessible",
+                        "Not Needed",
+                        NA) %>% unique() %>% str_to_upper()
   
   ## for each sample frame...
   for (s in names(sdd.import$sf)) {
@@ -452,6 +517,14 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     pts.spdf <- sdd.import$pts[[s]]
     pts.spdf@data[, fatefieldname] <- str_to_upper(pts.spdf@data[, fatefieldname])
     pts.spdf@data$WGT <- 0
+    
+    ## If there's a reporting.units.spdf provided, then we'll assign that identity and restrict the points to the reporting.units.spdf
+    if (!is.null(reporting.units.spdf)) {
+      pts.spdf <- attribute.shapefile(points = pts.spdf,
+                                      shape = reporting.units.spdf,
+                                      newfield = reportingunitfield,
+                                      attributefield = reportingunitfield)
+    }
     
     ## based on FINAL_DESIG, get the no. of pts sampled and the nonresponses.  
     ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. WGT for nonresponse categories,
@@ -475,7 +548,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     if (!is.null(sdd.import$strata[[s]])) {
       ## since we have stratification, use Design Stratum attribute to determine the number of stratum, tally the extent of each stratum,
       ## then tally the no. of pts by stratum
-      designstrata <- unique(pts.spdf@data[, pointstratumfieldname])
+      designstrata <- unique(pts.spdf@data[, names(pts.spdf@data) %in% c(pointstratumfieldname, reportingunitfield)])
       
       ## Get the stratum SPDF for this SDD (i.e., s), and call it strata.spdf
       strata.spdf <- sdd.import$strata[[s]]
@@ -483,8 +556,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Intialize a vector called area to store the area values in hectares, named by the stratum
       area <- NULL
       
-      ## Use recorded area of each stratum if present; else derive areas
-      if (length(strata.spdf$STRTM_AREA_SQKM) > 0) {
+      ## Use recorded area of each stratum if present and the strata weren't clipped by reporting.units.spdf; else derive areas
+      if (length(strata.spdf$STRTM_AREA_SQKM) > 0 & is.null(reporting.units.spdf)) {
         ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
         for (j in designstrata) {
           area[j] = (strata.spdf$STRTM_AREA_SQKM[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
@@ -613,19 +686,72 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   
   ## Adding in the TerrADat attributes because we need those primary keys
   ## TODO: Figure out where PrimaryKey actually lives, because it's not my copy of TerrADat
-  pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
-                                  x = tdat[, c("PLOTID", "PRIMARYKEY")],
-                                  by.y = c("TERRA_TERRADAT_ID"),
-                                  by.x = "PLOTID", all = F)
+  # pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
+  #                                 x = tdat[, c("PLOTID", "PRIMARYKEY")],
+  #                                 by.y = c("TERRA_TERRADAT_ID"),
+  #                                 by.x = "PLOTID", all = F)
   
   ## Diagnostics in case something goes pear-shaped
-  if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
-    print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
-    print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
-  }
-  
+  # if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
+  #   print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
+  #   print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
+  # }
+  names(pointweights.df)[names(pointweights.df) == "TERRA_TERRADAT_ID"] <- "PRIMARYKEY"
   ## Output is a named list with two data frames: information about the strata and information about the points
-  return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+  # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+}
+
+# The wgtcats are the unique combinations you get when overlaying design strata and reporting unit
+# The WGT on points NEEDS to be the result of having run weighter() on the SDD restricted to the data frame
+
+weight.adjuster <- function(points, ## The weighted output from weighter(), so weighter()["point.weights"] | weighter()[2] IF YOU RESTRICTED THE SDD INPUT BY THE REPORTING UNIT POLYGON
+                            points.wgtcat.field, ## The name of the field in the points data frame that the wgtcat is in
+                            wgtcat.spdf, ## The SPDF that's represents all the weird possible combinations of the reporting unit and strata
+                            spdf.area.field, ## The name of the field in the SPDF that contains the areas of the weight categories
+                            spdf.wgtcat.field, ## The name of the field in the SPDF that contains the areas of the weight categories' areas
+                            projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## NAD83 projection, standard issue as always
+){
+  ## Sanitization
+  names(points) <- str_to_upper(names(points))
+  names(wgtcat.spdf@data) <- str_to_upper(names(wgtcat.spdf@data))
+  points.wgtcat.field <- str_to_upper(points.wgtcat.field)
+  spdf.area.field <- str_to_upper(spdf.area.field)
+  spdf.wgtcat.field <- str_to_upper(spdf.wgtcat.field)
+  
+  ## Convert points to an SPDF
+  points.spdf <- SpatialPointsDataFrame(coords = points[, c("Longitude", "Latitude")],
+                                        data = points,
+                                        proj4string = projection)
+  
+  ## Attribute the points.spdf with the wgtcat identities from wgtcat.spdf
+  points.spdf <- attribute.shapefile(points = points.spdf,
+                                     shape = wgtcat.spdf,
+                                     attributefield = spdf.wgtcat.field,
+                                     newfield = points.wgtcat.field)
+  
+  ## The weighted points attributed by the combination of reporting units and strata
+  ## We first restrict to the points that inherited identities (this should've already happened in the previous step, but just to be safe)
+  data.current <- data.attributed[!is.na(data.attributed[, points.wgtcat.field]),]
+  
+  ## We want to include all the points. So we make a logical vector of just T with a length equal to the number of plots
+  sites.current <- (rep(T, nrow(data.current)))
+  
+  ## Grab the current weights from those points as its own vector
+  wgt.current <- data.current$WGT
+  
+  ## NB: The identity inherited from the shapefile needs to match the field used for name in framesize
+  wtcat.current <- data.current[, points.wgtcat.field]
+  
+  ## The framesize information about each of the unique wgtcat identities
+  ## I currently have this as an area, but I think it needs to be the inverse of the proportion of the area of the reporting unit that each identity represents
+  ## so the framesize value for a particular wgtcat = [area of the whole spdf]/[area of particular wgtcat]
+  framesize.current <- spdf@data[, spdf.area.field]
+  names(framesize.current) <- spdf@data[, spdf.wgtcat.field]
+  
+  ## Run the weight adjustment
+  output <- adjwgt(sites.current, wgt.current, wtcat.current, framesize.current)
+  return(output)
 }
 
 analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
@@ -669,7 +795,7 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     data.wide.current <- merge(x = data.wide.current,
                                y = tdat[, c("PRIMARYKEY", "REPORTING.UNIT", "LONGITUDE", "LATITUDE")],
                                by.x = c("PRIMARYKEY"),
-                               by.y = c("PRIMARYKEY"))
+                               by.y = c("PRIMARYKEY")) %>% distinct()
     
     ## Because it's easier to do this now while the data frame is still just one object and not four or five
     names(data.wide.current)[names(data.wide.current) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
@@ -694,7 +820,7 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     ## The areas should be the sum of the weights, right?
     areas.df <- data.wide.current %>% group_by(Reporting.Unit) %>% summarize(area = sum(wgt))
     ## So we're converting them to a list
-    area.list <- list(areas.df$area)
+    area.list <- areas.df$area %>% as.list()
     ## And naming them with the reporting unit they belong to
     names(area.list) <- areas.df$Reporting.Unit
     
