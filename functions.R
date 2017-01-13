@@ -670,7 +670,7 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     data.wide.current <- merge(x = data.wide.current,
                                y = tdat[, c("PRIMARYKEY", "REPORTING.UNIT", "LONGITUDE", "LATITUDE")],
                                by.x = c("PRIMARYKEY"),
-                               by.y = c("PRIMARYKEY"))
+                               by.y = c("PRIMARYKEY")) %>% distinct()
     
     ## Because it's easier to do this now while the data frame is still just one object and not four or five
     names(data.wide.current)[names(data.wide.current) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
