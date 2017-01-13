@@ -188,13 +188,13 @@ intersecter <- function(spdf1,
                                              data = data.frame(row.names = getSpPPolygonsIDSlots(intersect.sp)))
   
   ## Populate the empty @data with the attributes from the two SPDFs
-  intersect.spdf.attribute <- attribute.shapefile(points = intersect.spdf,
-                                                  shape = spdf1,
+  intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf,
+                                                  shape2 = spdf1,
                                                   attributefield = spdf1.attributefieldname.input,
                                                   newfield = spdf1.attributefieldname.output)
   
-  intersect.spdf.attribute <- attribute.shapefile(points = intersect.spdf.attribute,
-                                                  shape = spdf2,
+  intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf.attribute,
+                                                  shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
   
@@ -211,8 +211,8 @@ intersecter <- function(spdf1,
                                             data = data.frame(row.names = getSpPPolygonsIDSlots(dissolve.sp)))
   
   ## Add the unique identifier
-  dissolve.spdf.attribute <- attribute.shapefile(points = dissolve.spdf,
-                                                 shape = intersect.spdf.attribute,
+  dissolve.spdf.attribute <- attribute.shapefile(shape1 = dissolve.spdf,
+                                                 shape2 = intersect.spdf.attribute,
                                                  attributefield = "unique.identifier",
                                                  newfield = "unique.identifier")
   
@@ -524,8 +524,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     
     ## If there's a reporting.units.spdf provided, then we'll assign that identity and restrict the points to the reporting.units.spdf
     if (!is.null(reporting.units.spdf)) {
-      pts.spdf <- attribute.shapefile(points = pts.spdf,
-                                      shape = reporting.units.spdf,
+      pts.spdf <- attribute.shapefile(shape1 = pts.spdf,
+                                      shape2 = reporting.units.spdf,
                                       newfield = reportingunitfield,
                                       attributefield = reportingunitfield)
     }
@@ -568,8 +568,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         strata.clipped.spdf <- SpatialPolygonsDataFrame(Sr = strata.clipped.sp,
                                                         data = data.frame(row.names = getSpPPolygonsIDSlots(strata.clipped.sp)))
         ## Add the TERRA_STRTM_ID value to the SPDF
-        strata.clipped.spdf.attribute <- attribute.shapefile(points = strata.clipped.spdf,
-                                                             shape = strata.spdf,
+        strata.clipped.spdf.attribute <- attribute.shapefile(shape1 = strata.clipped.spdf,
+                                                             shape2 = strata.spdf,
                                                              attributefield = "TERRA_STRTM_ID",
                                                              newfield = "TERRA_STRTM_ID")
         ## Use that field to join the rest of the stratum attribute table
@@ -750,8 +750,8 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
                                         proj4string = projection)
   
   ## Attribute the points.spdf with the wgtcat identities from wgtcat.spdf
-  points.spdf <- attribute.shapefile(points = points.spdf,
-                                     shape = wgtcat.spdf,
+  points.spdf <- attribute.shapefile(shape1 = points.spdf,
+                                     shape2 = wgtcat.spdf,
                                      attributefield = spdf.wgtcat.field,
                                      newfield = points.wgtcat.field)
   
