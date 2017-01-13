@@ -493,7 +493,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     if (!is.null(sdd.import$strata[[s]])) {
       ## since we have stratification, use Design Stratum attribute to determine the number of stratum, tally the extent of each stratum,
       ## then tally the no. of pts by stratum
-      designstrata <- unique(pts.spdf@data[, pointstratumfieldname])
+      designstrata <- unique(pts.spdf@data[, names(pts.spdf@data) %in% c(pointstratumfieldname, reportingunitfield)])
       
       ## Get the stratum SPDF for this SDD (i.e., s), and call it strata.spdf
       strata.spdf <- sdd.import$strata[[s]]
