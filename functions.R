@@ -501,8 +501,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Intialize a vector called area to store the area values in hectares, named by the stratum
       area <- NULL
       
-      ## Use recorded area of each stratum if present; else derive areas
-      if (length(strata.spdf$STRTM_AREA_SQKM) > 0) {
+      ## Use recorded area of each stratum if present and the strata weren't clipped by reporting.units.spdf; else derive areas
+      if (length(strata.spdf$STRTM_AREA_SQKM) > 0 & is.null(reporting.units.spdf)) {
         ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
         for (j in designstrata) {
           area[j] = (strata.spdf$STRTM_AREA_SQKM[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
