@@ -553,6 +553,27 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Get the stratum SPDF for this SDD (i.e., s), and call it strata.spdf
       strata.spdf <- sdd.import$strata[[s]]
       
+      ## This needs to do both clipping and intersection so that the resulting strata.spdf is clipped to the reporting units
+      if (!is.null(reporting.units.spdf)) {
+        ## Clip the strata to the reporting unit
+        strata.clipped.sp <- gIntersection(strata.spdf,
+                                           reporting.units.spdf,
+                                           byid = TRUE,
+                                           drop_lower_td = TRUE)
+        ## Turn the SP into an SPDF
+        strata.clipped.spdf <- SpatialPolygonsDataFrame(Sr = strata.clipped.sp,
+                                                        data = data.frame(row.names = getSpPPolygonsIDSlots(strata.clipped.sp)))
+        ## Add the TERRA_STRTM_ID value to the SPDF
+        strata.clipped.spdf.attribute <- attribute.shapefile(points = strata.clipped.spdf,
+                                                             shape = strata.spdf,
+                                                             attributefield = "TERRA_STRTM_ID",
+                                                             newfield = "TERRA_STRTM_ID")
+        ## Use that field to join the rest of the stratum attribute table
+        strata.clipped.spdf.attribute@data <- merge(strata.clipped.spdf.attribute@data, strata.spdf@data)
+        ## Overwrite the original object with this clipped (and dissected, unfortunately) version
+        strata.spdf <- strata.clipped.spdf.attribute
+      }
+      
       ## Intialize a vector called area to store the area values in hectares, named by the stratum
       area <- NULL
       
@@ -751,6 +772,7 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
   
   ## Run the weight adjustment
   output <- adjwgt(sites.current, wgt.current, wtcat.current, framesize.current)
+  
   return(output)
 }
 
