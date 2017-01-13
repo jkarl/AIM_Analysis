@@ -1,6 +1,6 @@
 ---
-title: "Draft BLM AIM Project Analysis Report"
-date: '`r format(Sys.time(), "%d %B, %Y")`'
+title:  Draft `r params$project.shortname` Project Analysis Report
+date: 'Report date: `r format(Sys.time(), "%d %B, %Y")`'
 description: ''
 output:
   html_document:
@@ -11,15 +11,17 @@ output:
   word_document:
     toc: yes
 params:
-  ind_lut: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\tdat_indicator_lut.csv
-  cat.analysis.infile: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\analysis\analysis_output.csv
-  project: New Mexico RGdNNM #"Rio Grande Del Norte NM"
+  ind_lut: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\data\tdat_indicator_lut.csv
+  cat.analysis.infile: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\Bruneau_Example\BFO_2015_test_analysis.csv
+  project: Idaho Bruneau FO 2015 # Project Name from TerrADat
+  project.shortname: Bruneau FO
   conf.level: 80
-  sdd.gdb: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\TaFO_SDD_041215_dummy.gdb
-  benchmarks.filename: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\TerrestrialAIM_DataAnalysis_Template.xlsx
+  sdd.gdb: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\Bruneau_Example\BFO_2015-2019_SDD_122116.gdb
+  benchmarks.filename: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\Bruneau_Example\DataExplorer_AnalysisSprint_BruneauFO-FAKE.xlsx
   tdat.gdb: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\TerrADatExport_19Jan2016.gdb
   grassShrubDir: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\grass_shrub
-  repunits.file: C:\Users\jasokarl\Google Drive\Landscape Toolbox\LandscapeToolbox_GitHub\AIM_Analysis\Viz_Reporting\example_rep_units.shp
+  repunits.file: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\Bruneau_Example\BruneauFO_geodd.shp
+  # repunits.file shapefile must have fields RULevel and RepUnit that match the Type and Subpopulation fields, respectively, in the cat.analysis output file.
 
 always_allow_html: yes
 ---
@@ -40,7 +42,9 @@ library(rgdal)
 library(raster)
 library(xlsx)
 library(gridExtra)
+library(grid)
 library(rgeos)
+library(xtable)
 
 
 ## Function to lookup terradat indicator values in a table and return a real name
@@ -54,7 +58,9 @@ vlookup <- function(value,table,lcol,rcol) {
   return(indicator.lut[r,rcol])  
 }
 
-
+right <- function(string,num) {
+  return(substr(string,nchar(string)-num+1,nchar(string)))
+}
 
 ## Function to programatically create output bar plots for a given indicator.
 ## Requires the following inputs:
@@ -64,8 +70,8 @@ vlookup <- function(value,table,lcol,rcol) {
 ##  indicator = indicator to be graphed
 indicatorPlot <- function(df,ru,subpop,indicator,threshold=0.5) {
   plot.data <- df %>% filter(Type==ru & Subpopulation==subpop & Indicator==indicator) %>% filter(Category!="Total")
-  ind.realname <- vlookup(indicator,indicator.lut,2,3) ## Lookup the pretty name for the indicator
-  ggplot(plot.data, aes(x=Category,y=Estimate.P,fill=Category))+geom_bar(stat="identity")+coord_flip()+
+  ind.realname <- vlookup(indicator,indicator.lut,1,2) ## Lookup the pretty name for the indicator
+  ggplot(plot.data, aes(x=Category,y=Estimate.P,fill=Category))+geom_bar(stat="identity", width=0.5)+coord_flip()+
     geom_errorbar(aes(ymax=UCB95Pct.P,ymin=LCB95Pct.P),width=0.25)+
     scale_fill_brewer(type="div",palette="RdYlBu")+
     geom_hline(yintercept=threshold,colour="gold",size=2)+
@@ -99,11 +105,71 @@ indicatorMap <- function(level,ru,repunits.spdf,prjarea.spdf) {
   return(m)
 }
 
+## Function to add the estimated landscape proportions to the management objectives table for a reporting unit.
+## Function also makes a determination as to whether or not the objective is met
+## Requires the following inputs:
+##    prop.table = data frame of the management objectives and evaluation categories (that match the cat.analysis input table)
+##    analysis.table = cat.analysis input table (i.e., aim.analysis)
+##    ru = name of the reporting unit
+addLSProp <- function(prop.table, analysis.table, ru) {
+  
+  # Get the terradat indicator names that are used in cat.analysis
+  prop.table$Indicator <- unlist(lapply(prop.table$indicator.name.alt, FUN=vlookup, indicator.lut,2,1))
+  
+  # Get the estimated proportions from the analysis table for the reporting unit
+  a <- analysis.table[analysis.table$Subpopulation==ru & analysis.table$Category!="Total",c("Indicator","Category","Estimate.P","LCB95Pct.P","UCB95Pct.P")]
+  
+  # join the estimated proportions into prop.table
+  prop.table <- prop.table %>% left_join(a,by=c("Indicator"="Indicator","Evaluation.Category"="Category"))  
+  
+  # Calc whether or not objective is met
+  prop.table$Objective.Met <- ""
+  for (i in 1:nrow(prop.table)) { # I'm sure there's a slicker way to do this than a loop, but I can't figure it out at 10pm...
+    r <- prop.table[i,]
+    if (!(is.na(r$Required.Proportion) | r$Required.Proportion=="") & !is.na(r$LCB95Pct.P)) {
+      prop.table[i,"Objective.Met"] <- objectiveMet(r$Required.Proportion,r$Proportion.Relation,r$LCB95Pct.P,r$UCB95Pct.P)
+    }
+  }
+  
+  return(prop.table)
+}
+
+
+## Function for logic comparing estimated proportions for an indicator to its required landscape proportion.
+objectiveMet <- function(prop.base,relation,prop.est.lcb,prop.est.ucb) {
+  
+  low.comp <- eval(parse(text=paste(prop.est.lcb, "<=", prop.base)))
+  up.comp <- eval(parse(text=paste(prop.base,"<",prop.est.ucb)))
+  if (low.comp & up.comp) { #  required prop within CI
+    return("Inconclusive")
+  } else if (!low.comp & up.comp) { # estimted proportion above required prop
+    comp <- "above"
+  } else { # estimted proportion below required prop
+    comp <- "below"
+  }
+  
+  if (relation==">=") {
+    if (comp=="below") {
+      result <- "Not Met"
+    } else {
+      result <- "Met"
+    }
+  } else {
+    if (comp=="below") {
+      result<-"Met"
+    } else {
+      result<-"Not Met"
+    }
+  }
+  return(result)
+}
+
 #### Standard messages to insert at will
 msg1 <- paste("This graph shows the estimated percentage of the reporting unit in different categories for the specified indicator. ",params$conf.level,"% confidence intervals around those estimates are provided as error bars. The yellow bar denotes the landscape criterion, or point at which an objective is deemed to be met or not met as defined in the Sample Design Worksheet.",sep="")
 
 msg2 <- paste("This table gives the analysis results for the specified indicator and reporting unit, and contains the data used to create the graph above.")
 
+msgGrob <- "EXAMPLE\nESTIMATES\nDo not use!"
 ```
 
 ```{r loadData, message=FALSE, warning=FALSE, include=FALSE}
@@ -145,9 +211,10 @@ msg2 <- paste("This table gives the analysis results for the specified indicator
   benchmarks$eval.string.proportion <- paste0(benchmarks$Proprtion.Relation, benchmarks$Required.Proportion)
   # For each benchmark add in the name of the field in TerrADat that corresponds
   benchmarks <- merge(x = benchmarks, y = indicator.lut, by.x = "Indicator", by.y = "indicator.name")
-  benchmarks.sum <- benchmarks %>% group_by(Management.Question,Classification) %>% summarise(
-      indicator.name.alt=first(indicator.name.alt),
+  benchmarks.sum <- benchmarks %>% group_by(Management.Question,Evaluation.Category) %>% summarise(
+      indicator.name.alt=first(Indicator),
       Required.Proportion=first(Required.Proportion),
+      Proportion.Relation=first(Proportion.Relation),
       indicator.tdat=first(indicator.tdat),
       Benchmark.Source=first(Benchmark.Source))
 
@@ -249,7 +316,7 @@ For additional information, please see <http://aim.landscapetoolbox.org> or cont
 ### Indicators included in the report
  The following indicators were specified in the AIM data analysis template and are included in this report:
 ```{r indicatorsIncluded, echo=FALSE, results='asis'}
-  inds <- unique(benchmarks$indicator.name.alt)
+  inds <- unique(benchmarks$Indicator)
   for (ind in inds) {
     cat("\n  * ",ind,"\n")
   }
@@ -316,16 +383,37 @@ m
 
 
 ***
-# Goals, Monitoring Objectives, Benchmarks, and Results Summary
+# Goals, Monitoring Objectives, Benchmarks, and Results Summary {.tabset}
 This table summarizes the results of this report.  It contains broad goals as well as monitoring objectives and whether they were achieved based on available monitoring data for the area of interest.  Monitoring objectives include key indicators, benchmarks that define desired values of the indicators, and the proportion of the landscape required to meet benchmarks.  Together, this information can be used by BLM land managers to determine whether goals are being achieved and to recommend changes in management, if needed.  
 
-```{r objectivesSummary, echo=FALSE, warning=FALSE, message=FALSE}
-bm.table <- benchmarks.sum[,c(1,6,3,2,4)]
-names(bm.table) <- c("Management Goal","Benchmark Source","Indicator","Classification","Required Proportion")
+## Benchmarks
+```{r objectivesSummary, echo=FALSE, warning=FALSE, message=FALSE, results="asis"}
+bm.table <- benchmarks[,c(2,1,3,4,10,13,14,16)]
+bm.table$Benchmark <- paste(bm.table$eval.string.lower,bm.table$indicator.tdat,bm.table$eval.string.upper,sep=" ")
+bm.table <-  bm.table[,-c(6:8)] %>% arrange(Management.Question,Evaluation.Category)  # Drop the unneeded fields and sort by mgt question
+names(bm.table) <- c("Management Question","Indicator","Benchmark Source","Evaluation Stratum","Category","Evaluation Benchmark")
 knitr::kable(bm.table)
 
 ```
 
+```{r lsPropsTables, echo=FALSE,messages=FALSE, warning=FALSE, results='asis'}
+prop.table <- benchmarks.sum[,c(1,7,3,2,4,5)]
+prop.table$LS.Prop <- paste(prop.table$Proportion.Relation,prop.table$Required.Proportion,sep=" ")
+prop.table[prop.table$LS.Prop == "NA NA","LS.Prop"] <- ""
+
+for (lev in ru.levels) { # by reporting unit level
+  data.rulevel <- aim.analysis %>% filter(Type==lev)
+  rus <- unique(data.rulevel$Subpopulation)
+  for (ru in rus) { # by specific reporting unit
+    prop.table <- addLSProp(prop.table, aim.analysis, ru)
+    prop.table <-  prop.table[,-c(5,6,8,10,11)] %>% arrange(Management.Question,Evaluation.Category)  # sort by mgt question and category
+    names(prop.table) <- c("Management Question","Benchmark Source","Indicator","Category","Required Proportion","Estimated Proportion","Objective Met?")
+    cat("\n## Reporting Unit Level:",ru,"\n")
+    print(xtable(prop.table),type='html',include.rownames=FALSE, html.table.attributes=list("border='0' cellpadding='5' "))
+  }
+}
+
+```
 
 ***
 # Indicator Estimates by Reporting Unit for Monitoring Objectives
@@ -351,12 +439,13 @@ for (lev in ru.levels) { # by reporting unit level
     data.ru <- data.rulevel %>% filter(Subpopulation==ru)
     Indicators <- unique(data.rulevel$Indicator)
     for (ind in Indicators) {  # by indicator
-      ind.name <- vlookup(ind,indicator.lut,2,3)
+      ind.name <- vlookup(ind,indicator.lut,1,2)
       cat("\n#### Indicator: ",ind.name,"\n")
       #cat("\n",msg1,"\n")
-      g <- indicatorPlot(aim.analysis,lev,ru,ind,60)
+      g <- indicatorPlot(aim.analysis,lev,ru,ind,80)
       m <- indicatorMap(lev,ru,repUnits.spdf,prjarea.spdf)
-      grid.arrange(arrangeGrob(m,nrow=2),g,ncol=2,widths=c(1,3))
+      txt <- textGrob(msgGrob,just="centre",gp=gpar(fontsize=18,col="red"))
+      grid.arrange(arrangeGrob(m,txt,nrow=2),g,ncol=2,widths=c(1,3))
       cat("\n")
       cat("\n",msg1,"\n")
       cat("\n#### Results Table\n")
