@@ -67,39 +67,43 @@ sanitizer <- function(string, type){
 
 
 ## Shapefile attribute extraction function where the shapefile attribute table contains the values to assign
-attribute.shapefile <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+attribute.shapefile <- function(shape1 = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
                                 data.path = "", ## If the shape is in a .gdb feature class then this should be the full path, including the file extension .gdb. If the SPDF is already made, do not specify this argument
-                                shape = "", ## The name of the shapefile or feature class !!!OR!!! an SPDF
+                                shape2 = "", ## The name of the shapefile or feature class !!!OR!!! an SPDF
                                 attributefield = "", ## Name of the field in the shape that specifies the attribute to assign to the points
                                 newfield = "Evaluation.Stratum", ## Name of the new field in the output to assign the values from attributefield to
                                 projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")){
   ## Strip the file extension from shape, just in case it was there
-  if (is.character(shape)) {
-    shape <- str_replace(shape, pattern = "\\.[Ss][Hh][Pp]$", replacement = "") 
+  if (is.character(shape2)) {
+    shape2 <- str_replace(shape2, pattern = "\\.[Ss][Hh][Pp]$", replacement = "") 
   }
   ## If this is coming from a geodatabase, extract the shapefile appropriately. Otherwise read in the .shp
   if (grepl(x = data.path, pattern = "\\.[Gg][Dd][Bb]$")) {
-    shape.spdf <- readOGR(dsn = data.path, layer = shape, stringsAsFactors = F) %>% spTransform(projection)
+    shape2.spdf <- readOGR(dsn = data.path, layer = shape2, stringsAsFactors = F) %>% spTransform(projection)
   } else if (data.path != "") {
-    shape.spdf <- readOGR(dsn = paste0(data.path, "/", shape, ".shp"), layer = shape, stringsAsFactors = F) %>% spTransform(projection)
-  } else if (class(shape)[1] == "SpatialPointsDataFrame" | class(shape)[1] == "SpatialPolygonsDataFrame") {
-    shape.spdf <- shape %>% spTransform(projection)
+    shape2.spdf <- readOGR(dsn = paste0(data.path, "/", shape2, ".shp"), layer = shape2, stringsAsFactors = F) %>% spTransform(projection)
+  } else if (class(shape2)[1] == "SpatialPointsDataFrame" | class(shape2)[1] == "SpatialPolygonsDataFrame") {
+    shape2.spdf <- shape2 %>% spTransform(projection)
   }
   ## Make sure that the points also adhere to the same projection
-  points <- points %>% spTransform(projection)
+  shape1 <- shape1 %>% spTransform(projection)
   
   ## Because there might be overlap between polygons with different evaluation stratum identities, we'll check each eval stratum independently
-  for (n in unique(shape.spdf@data[, attributefield])) {
+  for (n in unique(shape2.spdf@data[, attributefield])) {
     ## Create a copy of the points to work with on this loop
-    current.points <- points
+    current.shape1 <- shape1
     ## Get the data frame from checking the points against the current subset of the polygons
-    over.result <- over(current.points, shape.spdf[shape.spdf@data[, attributefield] == n,])
+    over.result <- over(current.shape1, shape2.spdf[shape2.spdf@data[, attributefield] == n,])
     ## Add the values to the newfield column
-    current.points@data[, newfield] <- over.result[, attributefield]
+    current.shape1@data[, newfield] <- over.result[, attributefield]
+    ## Make sure that the polygons have unique IDs
+    if (class(current.shape1) == "SpatialPolygonsDataFrame") {
+      current.shape1 <- spChFIDs(current.shape1, paste(runif(n = 1, min = 0, max = 666666666), row.names(current.shape1), sep = "."))
+    }
     ## Store the results from this loop using the naming scheme "over__[current value of n]" with spaces replaced with underscores to prevent parsing errors later
     assign(x = str_replace(paste0("over__", n), " ", "_"),
            ## Only keep the ones that actually took on an attribute
-           value = current.points[!is.na(current.points@data[, newfield]),])
+           value = current.shape1[!is.na(current.shape1@data[, newfield]),])
   }
   ## List all the objects in the working environment that start with "over__" and rbind them into a single SPDF
   attributed.spdfs <- ls()[grepl(x = ls(), pattern = "^over__")]
@@ -184,13 +188,13 @@ intersecter <- function(spdf1,
                                              data = data.frame(row.names = getSpPPolygonsIDSlots(intersect.sp)))
   
   ## Populate the empty @data with the attributes from the two SPDFs
-  intersect.spdf.attribute <- attribute.shapefile(points = intersect.spdf,
-                                                  shape = spdf1,
+  intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf,
+                                                  shape2 = spdf1,
                                                   attributefield = spdf1.attributefieldname.input,
                                                   newfield = spdf1.attributefieldname.output)
   
-  intersect.spdf.attribute <- attribute.shapefile(points = intersect.spdf.attribute,
-                                                  shape = spdf2,
+  intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf.attribute,
+                                                  shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
   
@@ -207,8 +211,8 @@ intersecter <- function(spdf1,
                                             data = data.frame(row.names = getSpPPolygonsIDSlots(dissolve.sp)))
   
   ## Add the unique identifier
-  dissolve.spdf.attribute <- attribute.shapefile(points = dissolve.spdf,
-                                                 shape = intersect.spdf.attribute,
+  dissolve.spdf.attribute <- attribute.shapefile(shape1 = dissolve.spdf,
+                                                 shape2 = intersect.spdf.attribute,
                                                  attributefield = "unique.identifier",
                                                  newfield = "unique.identifier")
   
@@ -520,8 +524,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     
     ## If there's a reporting.units.spdf provided, then we'll assign that identity and restrict the points to the reporting.units.spdf
     if (!is.null(reporting.units.spdf)) {
-      pts.spdf <- attribute.shapefile(points = pts.spdf,
-                                      shape = reporting.units.spdf,
+      pts.spdf <- attribute.shapefile(shape1 = pts.spdf,
+                                      shape2 = reporting.units.spdf,
                                       newfield = reportingunitfield,
                                       attributefield = reportingunitfield)
     }
@@ -552,6 +556,27 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       
       ## Get the stratum SPDF for this SDD (i.e., s), and call it strata.spdf
       strata.spdf <- sdd.import$strata[[s]]
+      
+      ## This needs to do both clipping and intersection so that the resulting strata.spdf is clipped to the reporting units
+      if (!is.null(reporting.units.spdf)) {
+        ## Clip the strata to the reporting unit
+        strata.clipped.sp <- gIntersection(strata.spdf,
+                                           reporting.units.spdf,
+                                           byid = TRUE,
+                                           drop_lower_td = TRUE)
+        ## Turn the SP into an SPDF
+        strata.clipped.spdf <- SpatialPolygonsDataFrame(Sr = strata.clipped.sp,
+                                                        data = data.frame(row.names = getSpPPolygonsIDSlots(strata.clipped.sp)))
+        ## Add the TERRA_STRTM_ID value to the SPDF
+        strata.clipped.spdf.attribute <- attribute.shapefile(shape1 = strata.clipped.spdf,
+                                                             shape2 = strata.spdf,
+                                                             attributefield = "TERRA_STRTM_ID",
+                                                             newfield = "TERRA_STRTM_ID")
+        ## Use that field to join the rest of the stratum attribute table
+        strata.clipped.spdf.attribute@data <- merge(strata.clipped.spdf.attribute@data, strata.spdf@data)
+        ## Overwrite the original object with this clipped (and dissected, unfortunately) version
+        strata.spdf <- strata.clipped.spdf.attribute
+      }
       
       ## Intialize a vector called area to store the area values in hectares, named by the stratum
       area <- NULL
@@ -725,8 +750,8 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
                                         proj4string = projection)
   
   ## Attribute the points.spdf with the wgtcat identities from wgtcat.spdf
-  points.spdf <- attribute.shapefile(points = points.spdf,
-                                     shape = wgtcat.spdf,
+  points.spdf <- attribute.shapefile(shape1 = points.spdf,
+                                     shape2 = wgtcat.spdf,
                                      attributefield = spdf.wgtcat.field,
                                      newfield = points.wgtcat.field)
   
@@ -751,6 +776,7 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
   
   ## Run the weight adjustment
   output <- adjwgt(sites.current, wgt.current, wtcat.current, framesize.current)
+  
   return(output)
 }
 
