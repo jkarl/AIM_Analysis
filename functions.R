@@ -463,6 +463,14 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     pts.spdf@data[, fatefieldname] <- str_to_upper(pts.spdf@data[, fatefieldname])
     pts.spdf@data$WGT <- 0
     
+    ## If there's a reporting.units.spdf provided, then we'll assign that identity and restrict the points to the reporting.units.spdf
+    if (!is.null(reporting.units.spdf)) {
+      pts.spdf <- attribute.shapefile(points = pts.spdf,
+                                      shape = reporting.units.spdf,
+                                      newfield = reportingunitfield,
+                                      attributefield = reportingunitfield)
+    }
+    
     ## based on FINAL_DESIG, get the no. of pts sampled and the nonresponses.  
     ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. WGT for nonresponse categories,
     ## so having nontarget and unk N's may be useful down the road.
