@@ -695,7 +695,7 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     ## The areas should be the sum of the weights, right?
     areas.df <- data.wide.current %>% group_by(Reporting.Unit) %>% summarize(area = sum(wgt))
     ## So we're converting them to a list
-    area.list <- list(areas.df$area)
+    area.list <- areas.df$area %>% as.list()
     ## And naming them with the reporting unit they belong to
     names(area.list) <- areas.df$Reporting.Unit
     
