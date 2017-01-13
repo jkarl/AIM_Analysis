@@ -406,7 +406,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
 ## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
-                     tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     # tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
                      ## Assumes the following keywords are sufficient and consistent.
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
@@ -613,19 +613,20 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   
   ## Adding in the TerrADat attributes because we need those primary keys
   ## TODO: Figure out where PrimaryKey actually lives, because it's not my copy of TerrADat
-  pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
-                                  x = tdat[, c("PLOTID", "PRIMARYKEY")],
-                                  by.y = c("TERRA_TERRADAT_ID"),
-                                  by.x = "PLOTID", all = F)
+  # pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
+  #                                 x = tdat[, c("PLOTID", "PRIMARYKEY")],
+  #                                 by.y = c("TERRA_TERRADAT_ID"),
+  #                                 by.x = "PLOTID", all = F)
   
   ## Diagnostics in case something goes pear-shaped
-  if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
-    print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
-    print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
-  }
-  
+  # if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
+  #   print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
+  #   print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
+  # }
+  names(pointweights.df)[names(pointweights.df) == "TERRA_TERRADAT_ID"] <- "PRIMARYKEY"
   ## Output is a named list with two data frames: information about the strata and information about the points
-  return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+  # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
 }
 
 analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
