@@ -226,6 +226,11 @@ intersecter <- function(spdf1,
                                                  attributefield = "unique.identifier",
                                                  newfield = "unique.identifier")
   
+  ## Add the area in hectares
+  dissolve.spdf.attribute$area.ha <- gArea(dissolve.spdf.attribute, byid = T) * 0.0001
+  ## Add the area in square kilometers
+  dissolve.spdf.attribute$area.sqkm <- dissolve.spdf.attribute$area.ha * 0.01
+  
   ## Crack the unique identifier into the fields it came from
   for (n in dissolve.spdf.attribute@data$unique.identifier) {
     dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf1.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][1]
