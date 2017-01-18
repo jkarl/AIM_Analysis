@@ -504,7 +504,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      ## These shouldn't need to be changed from these defaults, but better to add that functionality now than regret not having it later
                      fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
-                     designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
+                     designstratumfield = "dmnnt_strtm", ## The field name in the strata SPDF to pull the stratum identity from
+                     projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83 projection
 ){
   ## Sanitization
   # names(tdat) <- str_to_upper(names(tdat))
@@ -582,8 +583,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## This needs to do both clipping and intersection so that the resulting strata.spdf is clipped to the reporting units
       if (!is.null(reporting.units.spdf)) {
         ## Clip the strata to the reporting unit
-        strata.clipped.sp <- gIntersection(strata.spdf,
-                                           reporting.units.spdf,
+        strata.clipped.sp <- gIntersection(strata.spdf %>% spTransform(projection),
+                                           reporting.units.spdf %>% spTransform(projection),
                                            byid = TRUE,
                                            drop_lower_td = TRUE)
         ## Turn the SP into an SPDF
@@ -597,7 +598,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         ## Use that field to join the rest of the stratum attribute table
         strata.clipped.spdf.attribute@data <- merge(strata.clipped.spdf.attribute@data, strata.spdf@data)
         ## Overwrite the original object with this clipped (and dissected, unfortunately) version
-        strata.spdf <- strata.clipped.spdf.attribute
+        strata.spdf <- strata.clipped.spdf.attribute %>% spTransform(projection)
       }
       
       ## Intialize a vector called area to store the area values in hectares, named by the stratum
@@ -606,36 +607,27 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Use recorded area of each stratum if present and the strata weren't clipped by reporting.units.spdf; else derive areas
       if (length(strata.spdf$STRTM_AREA_SQKM) > 0 & is.null(reporting.units.spdf)) {
         ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
-        for (j in designstrata) {
+        for (j in designstrata[, pointstratumfieldname]) {
           area[j] = (strata.spdf$STRTM_AREA_SQKM[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
         }
       } else {
         ## the following gArea is efficient when polygons are listed separately in the shapefile; otherwise, this can take
         ## an inordinate amount of time (at least on BLM's toy computers).  Also, need to verify the ha conversion (this worked on an example, but
         ## not sure this is a global solution for the SDD files!)
-        strata.spdf@data$hectares <- (gArea(strata.spdf, byid = T) * 0.0001)  ## derive ha of each polygon - 0.0001 converts from m2 to ha
-        for (j in designstrata) {
+        strata.spdf@data$hectares <- (gArea(strata.spdf %>% spTransform(projection), byid = T) * 0.0001)  ## derive ha of each polygon - 0.0001 converts from m2 to ha
+        for (j in designstrata[, pointstratumfieldname]) {
           area[j] <- sum(strata.spdf$hectares[strata.spdf@data[, designstratumfield] == j])
         }
       }
       
       ## no. pts by stratum
       ## This creates two named-by-fate-value vectors: Tpts (contains the number of points in each fate value) and Opts (contains the number of points for each TARGET fate value)
-      for (j in designstrata) {
+      for (j in designstrata[, pointstratumfieldname]) {
         Tpts <- NULL # total pts
         Opts <- NULL ## observed pts - i.e., sampled pts
         working.pts <- pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j,]
         Tpts <- nrow(working.pts[working.pts[, fatefieldname] %in% c(target.values, nontarget.values, unknown.values),])
         Opts <- nrow(working.pts[working.pts[, fatefieldname] %in% c(target.values),])
-        # for (k in c(target.values, nontarget.values, unknown.values)) {
-        #   print(k)
-        #   ## Get the number of points in the stratum that have the current fate
-        #   Tpts[k] <- nrow(working.pts[working.pts[, fatefieldname] == k,])
-        #   if (k %in% target.values) {
-        #     Opts <- Tpts[k] ## Storing any target point counts in their own vector
-        #   }
-        # }
-        
         
         ## derive adjusted wgt for stratum j
         sigma <- sum(Tpts) # total number of pts within the spatial extent of stratum j
@@ -730,13 +722,6 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       
     }## endof if no stratification
   }  ## endof for(s in sdd.src )
-  
-  ## Adding in the TerrADat attributes because we need those primary keys
-  ## TODO: Figure out where PrimaryKey actually lives, because it's not my copy of TerrADat
-  # pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
-  #                                 x = tdat[, c("PLOTID", "PRIMARYKEY")],
-  #                                 by.y = c("TERRA_TERRADAT_ID"),
-  #                                 by.x = "PLOTID", all = F)
   
   ## Diagnostics in case something goes pear-shaped
   # if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
