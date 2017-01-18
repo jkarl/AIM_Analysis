@@ -505,7 +505,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
 ){
   ## Sanitization
-  names(tdat) <- str_to_upper(names(tdat))
+  # names(tdat) <- str_to_upper(names(tdat))
   if (!is.null(reporting.units.spdf)) {
     names(reporting.units.spdf@data) <- str_to_upper(names(reporting.units.spdf@data))
   }
@@ -742,6 +742,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   #   print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
   # }
   names(pointweights.df)[names(pointweights.df) == "TERRA_TERRADAT_ID"] <- "PRIMARYKEY"
+  names(pointweights.df)[names(pointweights.df) == "PLOT_NM"] <- "PLOTID"
   ## Output is a named list with two data frames: information about the strata and information about the points
   # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
   return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
