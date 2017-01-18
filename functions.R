@@ -236,12 +236,13 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
   
   ## Crack the unique identifier into the fields it came from using the known nonsense string
   for (n in dissolve.spdf.attribute@data$unique.identifier) {
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf1.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier, pattern = "twas_brillig")[[1]][1]
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf2.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier, pattern = "twas_brillig")[[1]][2]
+    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf1.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier[dissolve.spdf.attribute@data$unique.identifier == n], pattern = "twas_brillig")[[1]][1]
+    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf2.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier[dissolve.spdf.attribute@data$unique.identifier == n], pattern = "twas_brillig")[[1]][2]
+    ## Replace the unique identifier with a reproducible SHA1 hash of the two fields for future use
+    dissolve.spdf.attribute@data$unique.identifier[dissolve.spdf.attribute@data$unique.identifier == n] <- sha1(x = paste0(dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf1.attributefieldname.output],
+                                                                                                                           dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf2.attributefieldname.output]),
+                                                                                                                digits = 14)
   }
-  
-  ## Remove the field unique.identifier
-  dissolve.spdf.attribute@data$unique.identifier <- NULL
   
   return(dissolve.spdf.attribute)
 }
