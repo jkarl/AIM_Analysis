@@ -179,25 +179,27 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
 # }
 
 
-intersecter <- function(spdf1,
-                        spdf1.attributefieldname.input,
-                        spdf1.attributefieldname.output,
-                        spdf2,
-                        spdf2.attributefieldname.input,
-                        spdf2.attributefieldname.output,
-                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")
-                        ){
+## Creates a SpatialPolygonsDataFrame from the intersection of two SpatialPolygonsDataFrames, inheriting one defining attribute field from each
+intersecter <- function(spdf1, ## A SpatialPolygonsShapefile
+                        spdf1.attributefieldname.input, ## Name of the field in SPDF1 to take values from
+                        spdf1.attributefieldname.output, ## Name of the field in the output SPDF to write values from SPDF1 into
+                        spdf2, ## A SpatialPolygonsShapefile
+                        spdf2.attributefieldname.input, ## Name of the field in SPDF2 to take values from
+                        spdf2.attributefieldname.output,  ## Name of the field in the output SPDF to write values from SPDF2 into
+                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## Standard NAD83 projection
+){
+  ## TODO: Sanitization
   ## Find the intersection of the two SPDFs
   intersect.sp <- gIntersection(spgeom1 = spdf1 %>% spTransform(projection),
                                 spgeom2 = spdf2 %>% spTransform(projection),
                                 byid = T,
                                 drop_lower_td = T)
   
-  ## Turn the SP into a SPDF
+  ## Turn the SP into a SPDF. The data frame will be empty
   intersect.spdf <- SpatialPolygonsDataFrame(Sr = intersect.sp,
                                              data = data.frame(row.names = getSpPPolygonsIDSlots(intersect.sp)))
   
-  ## Populate the empty @data with the attributes from the two SPDFs
+  ## Populate the empty @data with the attributes from the two SPDFs specified in the arguments *.attributefieldname.*
   intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf,
                                                   shape2 = spdf1,
                                                   attributefield = spdf1.attributefieldname.input,
@@ -208,15 +210,15 @@ intersecter <- function(spdf1,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
   
-  ## Create a single field to serve as a unique identifier to dissolve the polygons by
+  ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
   intersect.spdf.attribute@data$unique.identifier <- paste(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
                                                            intersect.spdf.attribute@data[, spdf2.attributefieldname.output],
                                                            sep = "twas_brillig")
   
-  ## Dissolve the polygons
-  dissolve.sp <- gUnaryUnion(test.spdf, id = test.spdf@data$unique.combo)
+  ## Dissolve the polygons according to the unique.identifier field
+  dissolve.sp <- gUnaryUnion(intersect.spdf.attribute, id = intersect.spdf.attribute@data$unique.combo)
   
-  ## Turn the SP into a SPDF
+  ## Turn the SP into a SPDF. The data frame component will be empty
   dissolve.spdf <- SpatialPolygonsDataFrame(Sr = dissolve.sp,
                                             data = data.frame(row.names = getSpPPolygonsIDSlots(dissolve.sp)))
   
@@ -231,11 +233,14 @@ intersecter <- function(spdf1,
   ## Add the area in square kilometers
   dissolve.spdf.attribute$area.sqkm <- dissolve.spdf.attribute$area.ha * 0.01
   
-  ## Crack the unique identifier into the fields it came from
+  ## Crack the unique identifier into the fields it came from using the known nonsense string
   for (n in dissolve.spdf.attribute@data$unique.identifier) {
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf1.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][1]
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf2.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][2]
+    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf1.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier, pattern = "twas_brillig")[[1]][1]
+    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf2.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier, pattern = "twas_brillig")[[1]][2]
   }
+  
+  ## Remove the field unique.identifier
+  dissolve.spdf.attribute@data$unique.identifier <- NULL
   
   return(dissolve.spdf.attribute)
 }
