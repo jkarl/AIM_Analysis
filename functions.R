@@ -67,9 +67,9 @@ sanitizer <- function(string, type){
 
 
 ## Shapefile attribute extraction function where the shapefile attribute table contains the values to assign
-attribute.shapefile <- function(shape1 = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+attribute.shapefile <- function(shape1,
                                 data.path = "", ## If the shape is in a .gdb feature class then this should be the full path, including the file extension .gdb. If the SPDF is already made, do not specify this argument
-                                shape2 = "", ## The name of the shapefile or feature class !!!OR!!! an SPDF
+                                shape2, ## The name of the shapefile or feature class !!!OR!!! an SPDF
                                 attributefield = "", ## Name of the field in the shape that specifies the attribute to assign to the points
                                 newfield = "Evaluation.Stratum", ## Name of the new field in the output to assign the values from attributefield to
                                 projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")){
