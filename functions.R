@@ -180,7 +180,7 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
 # }
 
 ## Creates a SpatialPolygonsDataFrame from the intersection of two SpatialPolygonsDataFrames, inheriting one defining attribute field from each
-intersecter <- function(spdf1, ## A SpatialPolygonsShapefile
+intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                         spdf1.attributefieldname.input, ## Name of the field in SPDF1 to take values from
                         spdf1.attributefieldname.output, ## Name of the field in the output SPDF to write values from SPDF1 into
                         spdf2, ## A SpatialPolygonsShapefile
