@@ -154,8 +154,9 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
   return(output)
 }
 
-## TODO: Function to import .csv or .xlsx to function as a lookup table with columns for TerrADat/MS field, field values, and evaluation strata
+# ## TODO: Function to import .csv or .xlsx to function as a lookup table with columns for TerrADat/MS field, field values, and evaluation strata
 # attribute.field <- function(points = SpatialPointsDataFrame(coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+#                             point.attribute.field = c(""), ## The name[s] of the field in the SPDF@data that contain[s] the relevant attributes
 #                             data.path = "", ## Only specify if you need to read in the lookup table from a file
 #                             lut = "", ## Either the filename !!!OR!!! a data frame. Either way it needs the columns Attribute.Field, Field.Value, Evaluation.Stratum
 #                             dropNA = T, ## Strip out points that did not qualify for an attribution stratum
@@ -177,7 +178,6 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
 #   }
 #   return(output)
 # }
-
 
 ## Creates a SpatialPolygonsDataFrame from the intersection of two SpatialPolygonsDataFrames, inheriting one defining attribute field from each
 intersecter <- function(spdf1, ## A SpatialPolygonsShapefile
