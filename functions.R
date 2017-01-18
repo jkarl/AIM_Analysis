@@ -101,14 +101,24 @@ attribute.shapefile <- function(shape1,
       current.shape1 <- spChFIDs(current.shape1, paste(runif(n = 1, min = 0, max = 666666666), row.names(current.shape1), sep = "."))
     }
     ## Store the results from this loop using the naming scheme "over__[current value of n]" with spaces replaced with underscores to prevent parsing errors later
-    assign(x = str_replace(paste0("over__", n), " ", "_"),
-           ## Only keep the ones that actually took on an attribute
-           value = current.shape1[!is.na(current.shape1@data[, newfield]),])
+    ## But only if the number of coordinates is greater than 0!
+    print(nrow(current.shape1[!is.na(current.shape1@data[, newfield]),]))
+    if (nrow(current.shape1[!is.na(current.shape1@data[, newfield]),]) > 0) {
+      assign(x = str_replace(paste0("over__", n), " ", "_"),
+             ## Only keep the ones that actually took on an attribute
+             value = current.shape1[!is.na(current.shape1@data[, newfield]),])
+    }
   }
   ## List all the objects in the working environment that start with "over__" and rbind them into a single SPDF
   attributed.spdfs <- ls()[grepl(x = ls(), pattern = "^over__")]
-  output <- eval(parse(text = paste0("rbind(`", paste(attributed.spdfs, collapse = "`,`") ,"`)")))
-  
+  ## Handle all the situations where there might not be intersections, there's only one attributed SPDF, or we get the expected results
+  if (length(attributed.spdfs) > 0) {
+    if (length(attributed.spdfs) == 1) {
+      output <- get(attributed.spdfs[1])
+    } else {
+      output <- eval(parse(text = paste0("rbind(`", paste(attributed.spdfs, collapse = "`,`") ,"`)"))) 
+    }
+  }
   return(output)
 }
 
