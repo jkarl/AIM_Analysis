@@ -226,12 +226,13 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
   dissolve.spdf.attribute <- attribute.shapefile(shape1 = dissolve.spdf,
                                                  shape2 = intersect.spdf.attribute,
                                                  attributefield = "unique.identifier",
-                                                 newfield = "unique.identifier")
+                                                 newfield = "unique.identifier") %>% spTransform(projection)
   
-  ## Add the area in hectares
-  dissolve.spdf.attribute$area.ha <- gArea(dissolve.spdf.attribute, byid = T) * 0.0001
-  ## Add the area in square kilometers
-  dissolve.spdf.attribute$area.sqkm <- dissolve.spdf.attribute$area.ha * 0.01
+  ## TODO: Fix area calculations
+  # ## Add the area in hectares
+  # dissolve.spdf.attribute$area.ha <- gArea(dissolve.spdf.attribute, byid = T) * 0.0001
+  # ## Add the area in square kilometers
+  # dissolve.spdf.attribute$area.sqkm <- dissolve.spdf.attribute$area.ha * 0.01
   
   ## Crack the unique identifier into the fields it came from using the known nonsense string
   for (n in dissolve.spdf.attribute@data$unique.identifier) {
