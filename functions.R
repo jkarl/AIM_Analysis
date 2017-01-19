@@ -222,7 +222,7 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                                                           digits = 14)
   
   ## If we're adding areas then:
-  if (!(area.ha) & !(area.sqkm)) {
+  if (area.ha | area.sqkm) {
     ## Add the areas in hectares and square kilometers for each as called for
     intersect.spdf.attribute <- area.add(spdf = intersect.spdf.attribute,
                                          area.ha = area.ha,
