@@ -187,8 +187,12 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                         spdf2, ## A SpatialPolygonsShapefile
                         spdf2.attributefieldname.input, ## Name of the field in SPDF2 to take values from
                         spdf2.attributefieldname.output,  ## Name of the field in the output SPDF to write values from SPDF2 into
+                        area.ha = T, ## Add fields for area in hectares for individual polygons and the sum of those within unique combinations of the input attribute fields
+                        area.sqkm = T, ## Add fields for area in square kilometers for individual polygons and the sum of those within unique combinations of the input attribute fields
                         projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## Standard NAD83
 ){
+  ## We'll need Alber's equal area projection for area calculations
+  projectionAL <- CRS("+proj=aea")
   ## TODO: Sanitization
   ## Find the intersection of the two SPDFs
   intersect.sp <- gIntersection(spgeom1 = spdf1 %>% spTransform(projection),
@@ -210,25 +214,48 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                                                   shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
-  
+  # ## A nonsense separator for paste() to use that we'd never expect in any situation so we can use str_split() later
+  # separator <- "twas_brillig"
   ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
-  intersect.spdf.attribute@data$unique.identifier <- paste(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
-                                                           intersect.spdf.attribute@data[, spdf2.attributefieldname.output],
-                                                           sep = "twas_brillig")
+  intersect.spdf.attribute@data$unique.identifier <- sha1(x = paste0(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
+                                                           intersect.spdf.attribute@data[, spdf2.attributefieldname.output]),
+                                                          digits = 14)
   
-  ## Dissolve the polygons according to the unique.identifier field
-  dissolve.sp <- gUnaryUnion(intersect.spdf.attribute, id = intersect.spdf.attribute@data$unique.combo)
-  
-  ## Turn the SP into a SPDF. The data frame component will be empty
-  dissolve.spdf <- SpatialPolygonsDataFrame(Sr = dissolve.sp,
-                                            data = data.frame(row.names = getSpPPolygonsIDSlots(dissolve.sp)))
-  
-  ## Add the unique identifier
-  dissolve.spdf.attribute <- attribute.shapefile(shape1 = dissolve.spdf,
-                                                 shape2 = intersect.spdf.attribute,
-                                                 attributefield = "unique.identifier",
-                                                 newfield = "unique.identifier") %>% spTransform(projection)
-  
+  ## If we're adding areas then:
+  if (!(area.ha) & !(area.sqkm)) {
+    ## Add the areas in hectares and square kilometers for each as called for
+    intersect.spdf.attribute <- area.add(spdf = intersect.spdf.attribute,
+                                         area.ha = area.ha,
+                                         area.sqkm = area.sqkm)
+    if (area.ha & area.sqkm) {
+      ## When there are both units represented
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
+                                                 "unique.identifier",
+                                                 paste(spdf1.attributefieldname.output),
+                                                 paste(spdf2.attributefieldname.output)
+      ) %>% summarize(area.ha.unit.sum = sum(area.ha),
+                      area.sqkm.unit.sum = sum(area.sqkm)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+    } else if (!(area.ha) & area.sqkm) {
+      ## When there's no area.ha
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
+                                                 "unique.identifier",
+                                                 paste(spdf1.attributefieldname.output),
+                                                 paste(spdf2.attributefieldname.output)
+      ) %>% summarize(area.sqkm.unit.sum = sum(area.sqkm)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+    } else if (area.ha & !(area.sqkm)) {
+      ## When there's no area.sqkm
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
+                                                 "unique.identifier",
+                                                 paste(spdf1.attributefieldname.output),
+                                                 paste(spdf2.attributefieldname.output)
+      ) %>% summarize(area.ha.unit.sum = sum(area.ha)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+    }
+  }
+
+  ## Return the final SPDF, making sure to project it into NAD83 (or whatever projection was provided to override the default)
+  return(intersect.spdf.attribute %>% spTransform(projection))
+}
+
 ## Adds areas in hectares and/or square kilometers, by polygon ID
 area.add <- function(spdf,
                      area.ha = T,
