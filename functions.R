@@ -261,16 +261,20 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
 }
 
 ## Adds areas in hectares and/or square kilometers, by polygon ID
-area.add <- function(spdf,
-                     area.ha = T,
-                     area.sqkm = T){
+area.add <- function(spdf, ## SpatialPolygonsDataFrame to add area values to
+                     area.ha = T, ## Add area in hectares?
+                     area.sqkm = T, ## Add area in square kilometers?
+                     byid = T ## Do it for the whole SPDF or on a per-polygon basis? Generally don't want to toggle this
+                     ){
+  ## Make sure the SPDF is in Albers equal area projection
   spdf <- spTransform(x = spdf, CRSobj = CRS("+proj=aea"))
-  ## TODO: Fix area calculations
+  
   ## Add the area in hectares, stripping the IDs from gArea() output
-  spdf@data$area.ha <- gArea(spdf, byid = T) * 0.0001 %>% unname()
+  spdf@data$area.ha <- gArea(spdf, byid = byid) * 0.0001 %>% unname()
   ## Add the area in square kilometers, converting from hectares
   spdf@data$area.sqkm <- spdf@data$area.ha * 0.01
-  ## Remove the areas that weren't requested. It's computationally cheaper to do it this way than run gArea() more than once
+  
+  ## Remove the areas that weren't requested. It's more straightforward and computationally cheaper to do it this way than run gArea() more than once
   if (!(area.ha)) {
     spdf@data$area.ha <- NULL
   }
