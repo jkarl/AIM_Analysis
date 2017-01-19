@@ -187,7 +187,7 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                         spdf2, ## A SpatialPolygonsShapefile
                         spdf2.attributefieldname.input, ## Name of the field in SPDF2 to take values from
                         spdf2.attributefieldname.output,  ## Name of the field in the output SPDF to write values from SPDF2 into
-                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## Standard NAD83 projection
+                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## Standard NAD83
 ){
   ## TODO: Sanitization
   ## Find the intersection of the two SPDFs
@@ -364,7 +364,7 @@ benchmarker <- function(benchmarks, ## The data frame imported with read.benchma
 sdd.reader <- function(src = "", ## A filepath as a string
                        sdd.src, ## A character string or vector of character strings with the filename[s] for the relevant .gdb in the filepath src
                        func = "arcgisbinding", ## This can be "readOGR" or "arcgisbinding" depending on which you prefer to or can use
-                       projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83 projection
+                       projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83
 ){
   
   ## readOGR() wrapped in safely() so that it will return NULL instead of an error. I need this for the function
@@ -506,7 +506,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
                      designstratumfield = "dmnnt_strtm", ## The field name in the strata SPDF to pull the stratum identity from
-                     projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83 projection
+                     projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83
 ){
   ## Sanitization
   # names(tdat) <- str_to_upper(names(tdat))
@@ -744,7 +744,7 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
                             wgtcat.spdf, ## The SPDF that's represents all the weird possible combinations of the reporting unit and strata
                             spdf.area.field, ## The name of the field in the SPDF that contains the areas of the weight categories
                             spdf.wgtcat.field, ## The name of the field in the SPDF that contains the areas of the weight categories' areas
-                            projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## NAD83 projection, standard issue as always
+                            projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## NAD83, standard issue as always
 ){
   ## Sanitization
   names(points) <- str_to_upper(names(points))
