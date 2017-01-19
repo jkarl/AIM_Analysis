@@ -1,6 +1,7 @@
 ##########################################################
 #### FUNCTIONS ####
 ##########################################################
+library(raster)
 library(tidyverse)
 library(stringr)
 library(xlsx)
@@ -227,8 +228,11 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
     intersect.spdf.attribute <- area.add(spdf = intersect.spdf.attribute,
                                          area.ha = area.ha,
                                          area.sqkm = area.sqkm)
+    ## Now we summarize() the areas by unique identifier and then merge that with the original data frame and use it to overwrite the original data frame
+    ## The arguments to summarize() are specific to what columns exist and what columns are therefore being added, so there are three alternatives
     if (area.ha & area.sqkm) {
       ## When there are both units represented
+      ## group_by_() is used instead of group_by() so that we can provide strings as arguments to let us programmatically use the attributefieldname.output values
       intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
                                                  "unique.identifier",
                                                  paste(spdf1.attributefieldname.output),
@@ -257,16 +261,20 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
 }
 
 ## Adds areas in hectares and/or square kilometers, by polygon ID
-area.add <- function(spdf,
-                     area.ha = T,
-                     area.sqkm = T){
+area.add <- function(spdf, ## SpatialPolygonsDataFrame to add area values to
+                     area.ha = T, ## Add area in hectares?
+                     area.sqkm = T, ## Add area in square kilometers?
+                     byid = T ## Do it for the whole SPDF or on a per-polygon basis? Generally don't want to toggle this
+                     ){
+  ## Make sure the SPDF is in Albers equal area projection
   spdf <- spTransform(x = spdf, CRSobj = CRS("+proj=aea"))
-  ## TODO: Fix area calculations
+  
   ## Add the area in hectares, stripping the IDs from gArea() output
-  spdf@data$area.ha <- gArea(spdf, byid = T) * 0.0001 %>% unname()
+  spdf@data$area.ha <- gArea(spdf, byid = byid) * 0.0001 %>% unname()
   ## Add the area in square kilometers, converting from hectares
   spdf@data$area.sqkm <- spdf@data$area.ha * 0.01
-  ## Remove the areas that weren't requested. It's computationally cheaper to do it this way than run gArea() more than once
+  
+  ## Remove the areas that weren't requested. It's more straightforward and computationally cheaper to do it this way than run gArea() more than once
   if (!(area.ha)) {
     spdf@data$area.ha <- NULL
   }
@@ -512,7 +520,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
   return(output)
 }
 
-## TODO: Needs to use PRIMARYKEYs instead of PLOTIDs because those are unique between sampling events when there is more than one
+
 ## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
@@ -566,25 +574,116 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                         "Not Needed",
                         NA) %>% unique() %>% str_to_upper()
   
-  ## for each sample frame...
+  ## We need to work our way up from the smallest-framed SDD to the largest, so we need to establish that order starting with this initialized list to work from
+  sdd.order <- list()
+  
+  ## For each SDD that was imported, bring in the points and the frame (strata if they exist, otherwise the sample frame) and clip them to reporting units if appropriate
   for (s in names(sdd.import$sf)) {
-    
-    ## get the pts file in sdd.src that corresponds to s and call it pts.spdf, then create and init the WGT attribute
+    ## First, bring in the relevant SPDFs
+    ## Get the pts file in sdd.src that corresponds to s and call it pts.spdf, then create and init the WGT attribute
     pts.spdf <- sdd.import$pts[[s]]
     pts.spdf@data[, fatefieldname] <- str_to_upper(pts.spdf@data[, fatefieldname])
     pts.spdf@data$WGT <- 0
+    ## Get the stratum SPDF for this SDD and call it frame.spdf
+    frame.spdf <- sdd.import$strata[[s]]
+    ## If the frame.spdf was actually NULL, then grab the sample frame to use instead
+    if (is.null(frame.spdf)) {
+      frame.spdf <- sdd.import$sf[[s]]
+    }
+    ## Add the area to frame.spdf
+    frame.spdf <- area.add(frame.spdf, byid = F)
     
-    ## If there's a reporting.units.spdf provided, then we'll assign that identity and restrict the points to the reporting.units.spdf
+    ## If there's a reporting.units.spdf provided, then we'll assign those identities to the SPDFs from sdd.import and restrict by them reporting.units.spdf
     if (!is.null(reporting.units.spdf)) {
+      ## Deal with the points
       pts.spdf <- attribute.shapefile(shape1 = pts.spdf,
                                       shape2 = reporting.units.spdf,
                                       newfield = reportingunitfield,
                                       attributefield = reportingunitfield)
+      ## Deal with frame.spdf
+      frame.spdf <-  attribute.shapefile(shape1 = frame.spdf,
+                                         shape2 = reporting.units.spdf,
+                                         newfield = reportingunitfield,
+                                         attributefield = reportingunitfield)
+      ## Add the correct area to frame.spdf
+      frame.spdf <- area.add(frame.spdf, byid = F)
     }
     
-    ## based on FINAL_DESIG, get the no. of pts sampled and the nonresponses.  
-    ## For now, we don't use unk and nontarget outside of this sum.  Has been some chatter about gen. WGT for nonresponse categories,
-    ## so having nontarget and unk N's may be useful down the road.
+    ## Add the size of this SDD's frame to my list of them so I can use it
+    sdd.order[s] <- frame.spdf$area.ha[1]
+    
+    ## Put the manipulated SPDFs back into the sdd.import for future use
+    sdd.import$pts[s] <- pts.spdf
+    if (!is.null(sdd.import$strata[[s]])) {
+      sdd.import$strata[s] <- frame.spdf
+    } else {
+      sdd.import$sf[s] <- frame.spdf
+    }
+  }
+  
+  ## Time to reorder that list of SDDs
+  ## Turn the lsit into a vector and then sort it in ascending order
+  sdd.order <- unlist(sdd.order)[sdd.order %>% unlist() %>% sort.list(decreasing = F)]
+  ## Then take the names of the SDDs assigned to those values because we want those, not the areas
+  sdd.order <- names(sdd.order)
+  
+  ## Initialize our vector of already-considered SDDs which we'll use to work our way out in concentric rings
+  sdd.completed <- c()
+  
+  ## Loop through each SDD starting with the smallest-framed one and working up
+  for (s in sdd.order) {
+    ## Bring in this SDD's frame, either strata or sample frame as appropriate
+    frame.spdf <- sdd.import$strata[[s]]
+    if (is.null(frame.spdf)) {
+      frame.spdf <- sdd.import$sf[[s]]
+    }
+    ## If this isn't the first pass through the loop, then the areas on the frame are incorrect because the SPDF has been subjected to gErase()
+    if (!is.null(sdd.completed)) {
+      frame.spdf <- area.add(frame.spdf)
+    }
+    
+    ## Bring in this SDD's points
+    pts.spdf <- sdd.import$pts[[s]]
+    
+    ## For each SDD that hasn't been considered yet:
+    ## Retrieve the points, see if they land in this current frame, keep the ones that do, and write it back into sdd.import without those
+    for (r in sdd.order[!(sdd.order %in% c(sdd.completed, s))]) {
+      ## First bring in the points
+      pts.spdf.temp <- sdd.import$pts[[r]]
+      if (nrow(pts.spdf.temp@data) > 0) {
+        ## Get a version of the points clipped to the current frame
+        pts.spdf.temp.attribute <- attribute.shapefile(shape1 = pts.temp.spdf,
+                                                       shape2 = frame.spdf,
+                                                       attributefield = names(frame.spdf@data)[1], ## Not picky here. We're just looking to see if they intersect
+                                                       newfield = "MATCH"
+        )
+        ## Strip out the unnecessary field
+        pts.spdf.temp.attribute@data$MATCH <- NULL
+        ## Bind these points to the current SDD's
+        pts.spdf <- rbind(pts.spdf, pts.spdf.temp.attribute)
+        ## Remove the points that fell in the current frame from the temporary points and write it back into sdd.import
+        sdd.import$pts[[r]] <- pts.spdf.temp[!(pts.spdf.temp@data$TERRA_TERRADAT_ID %in% pts.spdf.temp.attribute@data$TERRA_TERRADAT_ID),]
+      }
+      
+      ## Then bring in the frame
+      frame.spdf.temp <- sdd.import$strata[[r]]
+      if (is.null(frame.spdf.temp)) {
+        frame.spdf.temp <- sdd.import$sf[[r]]
+      }
+      
+      ## Remove the current frame from the temporary frame. This will let us build concentric frame areas as we work up to larger designs through sdd.order
+      ## TODO: Make sure this is an SPDF
+      frame.spdf.temp <- gErase(frame.spdf.temp, frame.spdf)
+      
+      ## Write that into sdd.import
+      if (!is.null(sdd.import$strata[[r]])) {
+        sdd.import$strata[[r]] <- frame.spdf.temp
+      } else {
+        sdd.import$sf[[r]] <- frame.spdf.temp
+      }
+    }
+    
+    ## Now that the clipping and reassigning is all completed, we can start calculating weights
     target.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% target.values,])
     unknown.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% unknown.values,])
     nontarget.count <- nrow(pts.spdf@data[pts.spdf@data[, fatefieldname] %in% nontarget.values,])
@@ -599,59 +698,20 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       print(paste(unique(pts.spdf@data[, fatefieldname])[!(unique(pts.spdf@data[, fatefieldname]) %in% c(target.values, unknown.values, nontarget.values))], collapse = ", "))
     }
     
-    ##TODO - The grep(..strata) evaluation will need to be modified to evaluate for a polygon OR a raster df
+    ## TODO: Needs to handle a polygon OR a raster df
     ## If the value for the current SDD in the list strata is not NULL, then we have a strata SPDF
     if (!is.null(sdd.import$strata[[s]])) {
       ## since we have stratification, use Design Stratum attribute to determine the number of stratum, tally the extent of each stratum,
       ## then tally the no. of pts by stratum
-      designstrata <- unique(pts.spdf@data[, names(pts.spdf@data) %in% c(pointstratumfieldname, reportingunitfield)])
+      designstrata <- unique(frame.spdf@data[, names(frame.spdf@data) %in% c(designstratumfield)])
       
-      ## Get the stratum SPDF for this SDD (i.e., s), and call it strata.spdf
-      strata.spdf <- sdd.import$strata[[s]]
-      
-      ## This needs to do both clipping and intersection so that the resulting strata.spdf is clipped to the reporting units
-      if (!is.null(reporting.units.spdf)) {
-        ## Clip the strata to the reporting unit
-        strata.clipped.sp <- gIntersection(strata.spdf %>% spTransform(projection),
-                                           reporting.units.spdf %>% spTransform(projection),
-                                           byid = TRUE,
-                                           drop_lower_td = TRUE)
-        ## Turn the SP into an SPDF
-        strata.clipped.spdf <- SpatialPolygonsDataFrame(Sr = strata.clipped.sp,
-                                                        data = data.frame(row.names = getSpPPolygonsIDSlots(strata.clipped.sp)))
-        ## Add the TERRA_STRTM_ID value to the SPDF
-        strata.clipped.spdf.attribute <- attribute.shapefile(shape1 = strata.clipped.spdf,
-                                                             shape2 = strata.spdf,
-                                                             attributefield = "TERRA_STRTM_ID",
-                                                             newfield = "TERRA_STRTM_ID")
-        ## Use that field to join the rest of the stratum attribute table
-        strata.clipped.spdf.attribute@data <- merge(strata.clipped.spdf.attribute@data, strata.spdf@data)
-        ## Overwrite the original object with this clipped (and dissected, unfortunately) version
-        strata.spdf <- strata.clipped.spdf.attribute %>% spTransform(projection)
-      }
-      
-      ## Intialize a vector called area to store the area values in hectares, named by the stratum
-      area <- NULL
-      
-      ## Use recorded area of each stratum if present and the strata weren't clipped by reporting.units.spdf; else derive areas
-      if (length(strata.spdf$STRTM_AREA_SQKM) > 0 & is.null(reporting.units.spdf)) {
-        ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
-        for (j in designstrata[, pointstratumfieldname]) {
-          area[j] = (strata.spdf$STRTM_AREA_SQKM[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
-        }
-      } else {
-        ## the following gArea is efficient when polygons are listed separately in the shapefile; otherwise, this can take
-        ## an inordinate amount of time (at least on BLM's toy computers).  Also, need to verify the ha conversion (this worked on an example, but
-        ## not sure this is a global solution for the SDD files!)
-        strata.spdf@data$hectares <- (gArea(strata.spdf %>% spTransform(projection), byid = T) * 0.0001)  ## derive ha of each polygon - 0.0001 converts from m2 to ha
-        for (j in designstrata[, pointstratumfieldname]) {
-          area[j] <- sum(strata.spdf$hectares[strata.spdf@data[, designstratumfield] == j])
-        }
-      }
+      ## Create a vector called area to store the area values in hectares, named by the stratum
+      area <- group_by_(frame.spdf@data, designstratumfield) %>% summarize(area.ha.sum = sum(area.ha))[,"area.ha.sum"]
+      names(area) <- strata@data[, designstratumfield] %>% unique()
       
       ## no. pts by stratum
       ## This creates two named-by-fate-value vectors: Tpts (contains the number of points in each fate value) and Opts (contains the number of points for each TARGET fate value)
-      for (j in designstrata[, pointstratumfieldname]) {
+      for (j in designstrata) {
         Tpts <- NULL # total pts
         Opts <- NULL ## observed pts - i.e., sampled pts
         working.pts <- pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j,]
@@ -700,12 +760,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## init re-used SPDFs
       pts.spdf <- NULL
       strata.spdf <- NULL
-    } else { ## If there aren't strata available to us in a useful format in the SDD, we'll just weight by the sample frame
-      ## since we lack stratification, use the sample frame to derive spatial extent (ha)
-      sf.spdf <- sdd.import$sf[[s]]
-      area <- (sf.spdf$SAMPLE_FRAME_AREA_SQKM) * 100		## *100 to convert from km to ha. The "SAMPLE_FRAME_AREA.." is specific to sample frames, stratification
-      ##  files have a different name for pre-calculated area (see above)
-      
+    } else {
+      ## If there aren't strata available to us in a useful format in the SDD, we'll just weight by the sample frame
+      ## since we lack stratification, use the sample frame to derive spatial extent in hectares
+      area <- frame.spdf@data$area.ha
       
       ## derive weights
       Pprop <- 1			## initialize - proportion of 1.0 means there were no nonresponses
@@ -750,6 +808,9 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       sf.spdf <- NULL
       
     }## endof if no stratification
+    
+    ## Add this SDD to the vector that we use to screen out points from consideration above
+    sdd.completed <- c(sdd.completed, s)
   }  ## endof for(s in sdd.src )
   
   ## Diagnostics in case something goes pear-shaped
