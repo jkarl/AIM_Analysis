@@ -228,8 +228,11 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
     intersect.spdf.attribute <- area.add(spdf = intersect.spdf.attribute,
                                          area.ha = area.ha,
                                          area.sqkm = area.sqkm)
+    ## Now we summarize() the areas by unique identifier and then merge that with the original data frame and use it to overwrite the original data frame
+    ## The arguments to summarize() are specific to what columns exist and what columns are therefore being added, so there are three alternatives
     if (area.ha & area.sqkm) {
       ## When there are both units represented
+      ## group_by_() is used instead of group_by() so that we can provide strings as arguments to let us programmatically use the attributefieldname.output values
       intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
                                                  "unique.identifier",
                                                  paste(spdf1.attributefieldname.output),
