@@ -229,23 +229,24 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                                                  attributefield = "unique.identifier",
                                                  newfield = "unique.identifier") %>% spTransform(projection)
   
+## Adds areas in hectares and/or square kilometers, by polygon ID
+area.add <- function(spdf,
+                     area.ha = T,
+                     area.sqkm = T){
+  spdf <- spTransform(x = spdf, CRSobj = CRS("+proj=aea"))
   ## TODO: Fix area calculations
-  # ## Add the area in hectares
-  # dissolve.spdf.attribute$area.ha <- gArea(dissolve.spdf.attribute, byid = T) * 0.0001
-  # ## Add the area in square kilometers
-  # dissolve.spdf.attribute$area.sqkm <- dissolve.spdf.attribute$area.ha * 0.01
-  
-  ## Crack the unique identifier into the fields it came from using the known nonsense string
-  for (n in dissolve.spdf.attribute@data$unique.identifier) {
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf1.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier[dissolve.spdf.attribute@data$unique.identifier == n], pattern = "twas_brillig")[[1]][1]
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf2.attributefieldname.output] <- str_split(string = dissolve.spdf.attribute@data$unique.identifier[dissolve.spdf.attribute@data$unique.identifier == n], pattern = "twas_brillig")[[1]][2]
-    ## Replace the unique identifier with a reproducible SHA1 hash of the two fields for future use
-    dissolve.spdf.attribute@data$unique.identifier[dissolve.spdf.attribute@data$unique.identifier == n] <- sha1(x = paste0(dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf1.attributefieldname.output],
-                                                                                                                           dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n, spdf2.attributefieldname.output]),
-                                                                                                                digits = 14)
+  ## Add the area in hectares, stripping the IDs from gArea() output
+  spdf@data$area.ha <- gArea(spdf, byid = T) * 0.0001 %>% unname()
+  ## Add the area in square kilometers, converting from hectares
+  spdf@data$area.sqkm <- spdf@data$area.ha * 0.01
+  ## Remove the areas that weren't requested. It's computationally cheaper to do it this way than run gArea() more than once
+  if (!(area.ha)) {
+    spdf@data$area.ha <- NULL
   }
-  
-  return(dissolve.spdf.attribute)
+  if (!(area.sqkm)) {
+    spdf@data$area.sqkm <- NULL
+  }
+  return(spdf)
 }
 
 #################################
