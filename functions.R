@@ -1,6 +1,7 @@
 ##########################################################
 #### FUNCTIONS ####
 ##########################################################
+library(raster)
 library(tidyverse)
 library(stringr)
 library(xlsx)
