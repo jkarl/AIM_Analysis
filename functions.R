@@ -9,6 +9,7 @@ library(rgdal)
 library(rgeos)
 library(maptools)
 library(arcgisbinding)
+library(digest)
 library(spsurvey)
 arc.check_product()
 
