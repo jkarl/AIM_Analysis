@@ -9,6 +9,7 @@ library(rgdal)
 library(rgeos)
 library(maptools)
 library(arcgisbinding)
+library(digest)
 library(spsurvey)
 arc.check_product()
 
@@ -67,9 +68,9 @@ sanitizer <- function(string, type){
 
 
 ## Shapefile attribute extraction function where the shapefile attribute table contains the values to assign
-attribute.shapefile <- function(shape1 = SpatialPointsDataFrame( coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+attribute.shapefile <- function(shape1,
                                 data.path = "", ## If the shape is in a .gdb feature class then this should be the full path, including the file extension .gdb. If the SPDF is already made, do not specify this argument
-                                shape2 = "", ## The name of the shapefile or feature class !!!OR!!! an SPDF
+                                shape2, ## The name of the shapefile or feature class !!!OR!!! an SPDF
                                 attributefield = "", ## Name of the field in the shape that specifies the attribute to assign to the points
                                 newfield = "Evaluation.Stratum", ## Name of the new field in the output to assign the values from attributefield to
                                 projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")){
@@ -101,14 +102,24 @@ attribute.shapefile <- function(shape1 = SpatialPointsDataFrame( coords = matrix
       current.shape1 <- spChFIDs(current.shape1, paste(runif(n = 1, min = 0, max = 666666666), row.names(current.shape1), sep = "."))
     }
     ## Store the results from this loop using the naming scheme "over__[current value of n]" with spaces replaced with underscores to prevent parsing errors later
-    assign(x = str_replace(paste0("over__", n), " ", "_"),
-           ## Only keep the ones that actually took on an attribute
-           value = current.shape1[!is.na(current.shape1@data[, newfield]),])
+    ## But only if the number of coordinates is greater than 0!
+    print(nrow(current.shape1[!is.na(current.shape1@data[, newfield]),]))
+    if (nrow(current.shape1[!is.na(current.shape1@data[, newfield]),]) > 0) {
+      assign(x = str_replace(paste0("over__", n), " ", "_"),
+             ## Only keep the ones that actually took on an attribute
+             value = current.shape1[!is.na(current.shape1@data[, newfield]),])
+    }
   }
   ## List all the objects in the working environment that start with "over__" and rbind them into a single SPDF
   attributed.spdfs <- ls()[grepl(x = ls(), pattern = "^over__")]
-  output <- eval(parse(text = paste0("rbind(`", paste(attributed.spdfs, collapse = "`,`") ,"`)")))
-  
+  ## Handle all the situations where there might not be intersections, there's only one attributed SPDF, or we get the expected results
+  if (length(attributed.spdfs) > 0) {
+    if (length(attributed.spdfs) == 1) {
+      output <- get(attributed.spdfs[1])
+    } else {
+      output <- eval(parse(text = paste0("rbind(`", paste(attributed.spdfs, collapse = "`,`") ,"`)"))) 
+    }
+  }
   return(output)
 }
 
@@ -144,8 +155,9 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
   return(output)
 }
 
-## TODO: Function to import .csv or .xlsx to function as a lookup table with columns for TerrADat/MS field, field values, and evaluation strata
+# ## TODO: Function to import .csv or .xlsx to function as a lookup table with columns for TerrADat/MS field, field values, and evaluation strata
 # attribute.field <- function(points = SpatialPointsDataFrame(coords = matrix(1:2,1:2), data = data.frame(matrix(1:2,1:2))),
+#                             point.attribute.field = c(""), ## The name[s] of the field in the SPDF@data that contain[s] the relevant attributes
 #                             data.path = "", ## Only specify if you need to read in the lookup table from a file
 #                             lut = "", ## Either the filename !!!OR!!! a data frame. Either way it needs the columns Attribute.Field, Field.Value, Evaluation.Stratum
 #                             dropNA = T, ## Strip out points that did not qualify for an attribution stratum
@@ -168,26 +180,31 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
 #   return(output)
 # }
 
-
-intersecter <- function(spdf1,
-                        spdf1.attributefieldname.input,
-                        spdf1.attributefieldname.output,
-                        spdf2,
-                        spdf2.attributefieldname.input,
-                        spdf2.attributefieldname.output,
-                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs")
-                        ){
+## Creates a SpatialPolygonsDataFrame from the intersection of two SpatialPolygonsDataFrames, inheriting one defining attribute field from each
+intersector <- function(spdf1, ## A SpatialPolygonsShapefile
+                        spdf1.attributefieldname.input, ## Name of the field in SPDF1 to take values from
+                        spdf1.attributefieldname.output, ## Name of the field in the output SPDF to write values from SPDF1 into
+                        spdf2, ## A SpatialPolygonsShapefile
+                        spdf2.attributefieldname.input, ## Name of the field in SPDF2 to take values from
+                        spdf2.attributefieldname.output,  ## Name of the field in the output SPDF to write values from SPDF2 into
+                        area.ha = T, ## Add fields for area in hectares for individual polygons and the sum of those within unique combinations of the input attribute fields
+                        area.sqkm = T, ## Add fields for area in square kilometers for individual polygons and the sum of those within unique combinations of the input attribute fields
+                        projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## Standard NAD83
+){
+  ## We'll need Alber's equal area projection for area calculations
+  projectionAL <- CRS("+proj=aea")
+  ## TODO: Sanitization
   ## Find the intersection of the two SPDFs
   intersect.sp <- gIntersection(spgeom1 = spdf1 %>% spTransform(projection),
                                 spgeom2 = spdf2 %>% spTransform(projection),
                                 byid = T,
                                 drop_lower_td = T)
   
-  ## Turn the SP into a SPDF
+  ## Turn the SP into a SPDF. The data frame will be empty
   intersect.spdf <- SpatialPolygonsDataFrame(Sr = intersect.sp,
                                              data = data.frame(row.names = getSpPPolygonsIDSlots(intersect.sp)))
   
-  ## Populate the empty @data with the attributes from the two SPDFs
+  ## Populate the empty @data with the attributes from the two SPDFs specified in the arguments *.attributefieldname.*
   intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf,
                                                   shape2 = spdf1,
                                                   attributefield = spdf1.attributefieldname.input,
@@ -197,32 +214,66 @@ intersecter <- function(spdf1,
                                                   shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
+  # ## A nonsense separator for paste() to use that we'd never expect in any situation so we can use str_split() later
+  # separator <- "twas_brillig"
+  ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
+  intersect.spdf.attribute@data$unique.identifier <- sha1(x = paste0(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
+                                                           intersect.spdf.attribute@data[, spdf2.attributefieldname.output]),
+                                                          digits = 14)
   
-  ## Create a single field to serve as a unique identifier to dissolve the polygons by
-  intersect.spdf.attribute@data$unique.identifier <- paste(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
-                                                           intersect.spdf.attribute@data[, spdf2.attributefieldname.output],
-                                                           sep = "twas_brillig")
-  
-  ## Dissolve the polygons
-  dissolve.sp <- gUnaryUnion(test.spdf, id = test.spdf@data$unique.combo)
-  
-  ## Turn the SP into a SPDF
-  dissolve.spdf <- SpatialPolygonsDataFrame(Sr = dissolve.sp,
-                                            data = data.frame(row.names = getSpPPolygonsIDSlots(dissolve.sp)))
-  
-  ## Add the unique identifier
-  dissolve.spdf.attribute <- attribute.shapefile(shape1 = dissolve.spdf,
-                                                 shape2 = intersect.spdf.attribute,
-                                                 attributefield = "unique.identifier",
-                                                 newfield = "unique.identifier")
-  
-  ## Crack the unique identifier into the fields it came from
-  for (n in dissolve.spdf.attribute@data$unique.identifier) {
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf1.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][1]
-    dissolve.spdf.attribute@data[dissolve.spdf.attribute@data$unique.identifier == n , spdf2.attributefieldname.output] <- str_split(string = "duhtwas_brilligwhat", pattern = "twas_brillig")[[1]][2]
+  ## If we're adding areas then:
+  if (!(area.ha) & !(area.sqkm)) {
+    ## Add the areas in hectares and square kilometers for each as called for
+    intersect.spdf.attribute <- area.add(spdf = intersect.spdf.attribute,
+                                         area.ha = area.ha,
+                                         area.sqkm = area.sqkm)
+    if (area.ha & area.sqkm) {
+      ## When there are both units represented
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
+                                                 "unique.identifier",
+                                                 paste(spdf1.attributefieldname.output),
+                                                 paste(spdf2.attributefieldname.output)
+      ) %>% summarize(area.ha.unit.sum = sum(area.ha),
+                      area.sqkm.unit.sum = sum(area.sqkm)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+    } else if (!(area.ha) & area.sqkm) {
+      ## When there's no area.ha
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
+                                                 "unique.identifier",
+                                                 paste(spdf1.attributefieldname.output),
+                                                 paste(spdf2.attributefieldname.output)
+      ) %>% summarize(area.sqkm.unit.sum = sum(area.sqkm)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+    } else if (area.ha & !(area.sqkm)) {
+      ## When there's no area.sqkm
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
+                                                 "unique.identifier",
+                                                 paste(spdf1.attributefieldname.output),
+                                                 paste(spdf2.attributefieldname.output)
+      ) %>% summarize(area.ha.unit.sum = sum(area.ha)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+    }
   }
-  
-  return(dissolve.spdf.attribute)
+
+  ## Return the final SPDF, making sure to project it into NAD83 (or whatever projection was provided to override the default)
+  return(intersect.spdf.attribute %>% spTransform(projection))
+}
+
+## Adds areas in hectares and/or square kilometers, by polygon ID
+area.add <- function(spdf,
+                     area.ha = T,
+                     area.sqkm = T){
+  spdf <- spTransform(x = spdf, CRSobj = CRS("+proj=aea"))
+  ## TODO: Fix area calculations
+  ## Add the area in hectares, stripping the IDs from gArea() output
+  spdf@data$area.ha <- gArea(spdf, byid = T) * 0.0001 %>% unname()
+  ## Add the area in square kilometers, converting from hectares
+  spdf@data$area.sqkm <- spdf@data$area.ha * 0.01
+  ## Remove the areas that weren't requested. It's computationally cheaper to do it this way than run gArea() more than once
+  if (!(area.ha)) {
+    spdf@data$area.ha <- NULL
+  }
+  if (!(area.sqkm)) {
+    spdf@data$area.sqkm <- NULL
+  }
+  return(spdf)
 }
 
 #################################
@@ -341,7 +392,7 @@ benchmarker <- function(benchmarks, ## The data frame imported with read.benchma
 sdd.reader <- function(src = "", ## A filepath as a string
                        sdd.src, ## A character string or vector of character strings with the filename[s] for the relevant .gdb in the filepath src
                        func = "arcgisbinding", ## This can be "readOGR" or "arcgisbinding" depending on which you prefer to or can use
-                       projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83 projection
+                       projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83
 ){
   
   ## readOGR() wrapped in safely() so that it will return NULL instead of an error. I need this for the function
@@ -482,10 +533,11 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      ## These shouldn't need to be changed from these defaults, but better to add that functionality now than regret not having it later
                      fatefieldname = "final_desig", ## The field name in the points SPDF to pull the point fate from
                      pointstratumfieldname = "dsgn_strtm_nm", ## The field name in the points SPDF to pull the design stratum
-                     designstratumfield = "dmnnt_strtm" ## The field name in the strata SPDF to pull the stratum identity from 
+                     designstratumfield = "dmnnt_strtm", ## The field name in the strata SPDF to pull the stratum identity from
+                     projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83
 ){
   ## Sanitization
-  names(tdat) <- str_to_upper(names(tdat))
+  # names(tdat) <- str_to_upper(names(tdat))
   if (!is.null(reporting.units.spdf)) {
     names(reporting.units.spdf@data) <- str_to_upper(names(reporting.units.spdf@data))
   }
@@ -560,8 +612,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## This needs to do both clipping and intersection so that the resulting strata.spdf is clipped to the reporting units
       if (!is.null(reporting.units.spdf)) {
         ## Clip the strata to the reporting unit
-        strata.clipped.sp <- gIntersection(strata.spdf,
-                                           reporting.units.spdf,
+        strata.clipped.sp <- gIntersection(strata.spdf %>% spTransform(projection),
+                                           reporting.units.spdf %>% spTransform(projection),
                                            byid = TRUE,
                                            drop_lower_td = TRUE)
         ## Turn the SP into an SPDF
@@ -575,7 +627,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         ## Use that field to join the rest of the stratum attribute table
         strata.clipped.spdf.attribute@data <- merge(strata.clipped.spdf.attribute@data, strata.spdf@data)
         ## Overwrite the original object with this clipped (and dissected, unfortunately) version
-        strata.spdf <- strata.clipped.spdf.attribute
+        strata.spdf <- strata.clipped.spdf.attribute %>% spTransform(projection)
       }
       
       ## Intialize a vector called area to store the area values in hectares, named by the stratum
@@ -584,36 +636,27 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Use recorded area of each stratum if present and the strata weren't clipped by reporting.units.spdf; else derive areas
       if (length(strata.spdf$STRTM_AREA_SQKM) > 0 & is.null(reporting.units.spdf)) {
         ## use names to pick up area (sqkm) because designstrata and strtm_area_sqkm accession orders differ!
-        for (j in designstrata) {
+        for (j in designstrata[, pointstratumfieldname]) {
           area[j] = (strata.spdf$STRTM_AREA_SQKM[strata.spdf@data[, designstratumfield] == j]) * 100 ## *100 to convert from sqkm to ha
         }
       } else {
         ## the following gArea is efficient when polygons are listed separately in the shapefile; otherwise, this can take
         ## an inordinate amount of time (at least on BLM's toy computers).  Also, need to verify the ha conversion (this worked on an example, but
         ## not sure this is a global solution for the SDD files!)
-        strata.spdf@data$hectares <- (gArea(strata.spdf, byid = T) * 0.0001)  ## derive ha of each polygon - 0.0001 converts from m2 to ha
-        for (j in designstrata) {
+        strata.spdf@data$hectares <- (gArea(strata.spdf %>% spTransform(projection), byid = T) * 0.0001)  ## derive ha of each polygon - 0.0001 converts from m2 to ha
+        for (j in designstrata[, pointstratumfieldname]) {
           area[j] <- sum(strata.spdf$hectares[strata.spdf@data[, designstratumfield] == j])
         }
       }
       
       ## no. pts by stratum
       ## This creates two named-by-fate-value vectors: Tpts (contains the number of points in each fate value) and Opts (contains the number of points for each TARGET fate value)
-      for (j in designstrata) {
+      for (j in designstrata[, pointstratumfieldname]) {
         Tpts <- NULL # total pts
         Opts <- NULL ## observed pts - i.e., sampled pts
         working.pts <- pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j,]
         Tpts <- nrow(working.pts[working.pts[, fatefieldname] %in% c(target.values, nontarget.values, unknown.values),])
         Opts <- nrow(working.pts[working.pts[, fatefieldname] %in% c(target.values),])
-        # for (k in c(target.values, nontarget.values, unknown.values)) {
-        #   print(k)
-        #   ## Get the number of points in the stratum that have the current fate
-        #   Tpts[k] <- nrow(working.pts[working.pts[, fatefieldname] == k,])
-        #   if (k %in% target.values) {
-        #     Opts <- Tpts[k] ## Storing any target point counts in their own vector
-        #   }
-        # }
-        
         
         ## derive adjusted wgt for stratum j
         sigma <- sum(Tpts) # total number of pts within the spatial extent of stratum j
@@ -709,19 +752,13 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     }## endof if no stratification
   }  ## endof for(s in sdd.src )
   
-  ## Adding in the TerrADat attributes because we need those primary keys
-  ## TODO: Figure out where PrimaryKey actually lives, because it's not my copy of TerrADat
-  # pointweights.df.merged <- merge(y = pointweights.df[, c("TERRA_TERRADAT_ID", "FINAL_DESIG", "WGT")],
-  #                                 x = tdat[, c("PLOTID", "PRIMARYKEY")],
-  #                                 by.y = c("TERRA_TERRADAT_ID"),
-  #                                 by.x = "PLOTID", all = F)
-  
   ## Diagnostics in case something goes pear-shaped
   # if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
   #   print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
   #   print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
   # }
   names(pointweights.df)[names(pointweights.df) == "TERRA_TERRADAT_ID"] <- "PRIMARYKEY"
+  names(pointweights.df)[names(pointweights.df) == "PLOT_NM"] <- "PLOTID"
   ## Output is a named list with two data frames: information about the strata and information about the points
   # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
   return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
@@ -735,7 +772,7 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
                             wgtcat.spdf, ## The SPDF that's represents all the weird possible combinations of the reporting unit and strata
                             spdf.area.field, ## The name of the field in the SPDF that contains the areas of the weight categories
                             spdf.wgtcat.field, ## The name of the field in the SPDF that contains the areas of the weight categories' areas
-                            projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## NAD83 projection, standard issue as always
+                            projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## NAD83, standard issue as always
 ){
   ## Sanitization
   names(points) <- str_to_upper(names(points))
