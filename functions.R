@@ -520,7 +520,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
   return(output)
 }
 
-## TODO: Needs to use PRIMARYKEYs instead of PLOTIDs because those are unique between sampling events when there is more than one
+
 ## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
@@ -607,7 +607,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       print(paste(unique(pts.spdf@data[, fatefieldname])[!(unique(pts.spdf@data[, fatefieldname]) %in% c(target.values, unknown.values, nontarget.values))], collapse = ", "))
     }
     
-    ##TODO - The grep(..strata) evaluation will need to be modified to evaluate for a polygon OR a raster df
+    ## TODO: Needs to handle a polygon OR a raster df
     ## If the value for the current SDD in the list strata is not NULL, then we have a strata SPDF
     if (!is.null(sdd.import$strata[[s]])) {
       ## since we have stratification, use Design Stratum attribute to determine the number of stratum, tally the extent of each stratum,
