@@ -898,6 +898,7 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
 analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
                      weights, ## The point weights output from weighter(), so weighter()[["point.weights"]]
                      tdat, ## The attributed TerrADat that has the reporting units
+                     adjustedweights = T ## Use adjusted weights if present?
                      ) {
   point.weights <- weights
   ## Sanitization
@@ -937,6 +938,11 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     
     ## Because it's easier to do this now while the data frame is still just one object and not four or five
     names(data.wide.current)[names(data.wide.current) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
+    if (adjustedweights & ("ADJWGT" %in% names(data.wide.current))) {
+      names(data.wide.current)[names(data.wide.current) == "ADJWGT"] <- "wgt"
+    } else {
+      names(data.wide.current)[names(data.wide.current) == "WGT"] <- "wgt"
+    }
     ## All the sites are active? Sure! Why not?
     data.wide.current$Active <- T
     
