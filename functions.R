@@ -215,8 +215,7 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                                                   shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
-  # ## A nonsense separator for paste() to use that we'd never expect in any situation so we can use str_split() later
-  # separator <- "twas_brillig"
+  
   ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
   intersect.spdf.attribute@data$unique.identifier <- sha1(x = paste0(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
                                                            intersect.spdf.attribute@data[, spdf2.attributefieldname.output]),
@@ -521,16 +520,17 @@ sdd.reader <- function(src = "", ## A filepath as a string
 }
 
 
-## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
-                     # tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
+                     combine = T, ## If provided multiple SDDs, should those be combined into a single analysis? Otherwise the weights will be calculated on a per-SDD basis
+                     reorder = T, ## Should the SDDs be reordered by size or ar they provided in the order that they should be considered? Depends on how they overlap and user discretion
                      reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
                      reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
                      ## Assumes the following keywords are sufficient and consistent.
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
-                     target.values = c("Target Sampled"),
+                     target.values = c("Target Sampled",
+                                       "TS"),
                      unknown.values = c("Unknown",
                                         "UNK"),
                      nontarget.values = c("Non-Target",
@@ -563,7 +563,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   ## The fate values that we know about are hardcoded here.
   ## Whatever values are provided in the function arguments get concatenated and then we keep only the unique values from that result
   target.values <- c(target.values,
-                     "Target Sampled") %>% unique() %>% str_to_upper()
+                     "Target Sampled",
+                     "TS") %>% unique() %>% str_to_upper()
   unknown.values <- c(unknown.values,
                       "Unknown",
                       "UNK") %>% unique() %>% str_to_upper()
@@ -598,8 +599,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Deal with the points
       pts.spdf <- attribute.shapefile(shape1 = pts.spdf,
                                       shape2 = reporting.units.spdf,
-                                      newfield = reportingunitfield,
+                                      newfield = "REPORTING.UNIT.RESTRICTED",
                                       attributefield = reportingunitfield)
+      ## Overwrite whatever value was brought in from the reporting.units.spdf with T because we only want to know if they were restricted or not
+      pts.spdf@data$REPORTING.UNIT.RESTRICTED <- T
       ## Deal with frame.spdf
       frame.spdf <-  attribute.shapefile(shape1 = frame.spdf,
                                          shape2 = reporting.units.spdf,
@@ -621,11 +624,16 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     }
   }
   
-  ## Time to reorder that list of SDDs
-  ## Turn the lsit into a vector and then sort it in ascending order
-  sdd.order <- unlist(sdd.order)[sdd.order %>% unlist() %>% sort.list(decreasing = F)]
-  ## Then take the names of the SDDs assigned to those values because we want those, not the areas
-  sdd.order <- names(sdd.order)
+  ## Time to reorder that list of SDDs, if the user wants that, otherwise keep the order that they were fed to sdd.reader() (and therefore appear in sdd.import)
+  if (reorder) {
+    ## Turn the lsit into a vector and then sort it in ascending order
+    sdd.order <- unlist(sdd.order)[sdd.order %>% unlist() %>% sort.list(decreasing = F)]
+    ## Then take the names of the SDDs assigned to those values because we want those, not the areas
+    sdd.order <- names(sdd.order)
+  } else {
+    sdd.order <- names(sdd.order)
+  }
+
   
   ## Initialize our vector of already-considered SDDs which we'll use to work our way out in concentric rings
   sdd.completed <- c()
@@ -644,42 +652,50 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     
     ## Bring in this SDD's points
     pts.spdf <- sdd.import$pts[[s]]
+    ## Add in the REPORTING.UNITS.RESTRICTED field with the value F if it's not there already. The only way it'd already be there is if the points were restricted
+    if (!("REPORTING.UNIT.RESTRICTED" %in% names(pts.spdf@data))) {
+      pts.spdf@data$REPORTING.UNIT.RESTRICTED <- F
+    }
     
-    ## For each SDD that hasn't been considered yet:
-    ## Retrieve the points, see if they land in this current frame, keep the ones that do, and write it back into sdd.import without those
-    for (r in sdd.order[!(sdd.order %in% c(sdd.completed, s))]) {
-      ## First bring in the points
-      pts.spdf.temp <- sdd.import$pts[[r]]
-      if (nrow(pts.spdf.temp@data) > 0) {
-        ## Get a version of the points clipped to the current frame
-        pts.spdf.temp.attribute <- attribute.shapefile(shape1 = pts.temp.spdf,
-                                                       shape2 = frame.spdf,
-                                                       attributefield = names(frame.spdf@data)[1], ## Not picky here. We're just looking to see if they intersect
-                                                       newfield = "MATCH"
-        )
-        ## Strip out the unnecessary field
-        pts.spdf.temp.attribute@data$MATCH <- NULL
-        ## Bind these points to the current SDD's
-        pts.spdf <- rbind(pts.spdf, pts.spdf.temp.attribute)
-        ## Remove the points that fell in the current frame from the temporary points and write it back into sdd.import
-        sdd.import$pts[[r]] <- pts.spdf.temp[!(pts.spdf.temp@data$TERRA_TERRADAT_ID %in% pts.spdf.temp.attribute@data$TERRA_TERRADAT_ID),]
-      }
-      
-      ## Then bring in the frame
-      frame.spdf.temp <- sdd.import$strata[[r]]
-      if (is.null(frame.spdf.temp)) {
-        frame.spdf.temp <- sdd.import$sf[[r]]
-      }
-      
-      ## Remove the current frame from the temporary frame. This will let us build concentric frame areas as we work up to larger designs through sdd.order
-      ## TODO: Make sure this is an SPDF
-      frame.spdf.temp <- gErase(frame.spdf.temp, frame.spdf)
-      
-      ## Write that into sdd.import
-      if (!is.null(sdd.import$strata[[r]])) {
-        sdd.import$strata[[r]] <- frame.spdf.temp
-      } else {
-        sdd.import$sf[[r]] <- frame.spdf.temp
+    
+    ## Only do this if the user wants the SDDs to be considered as one unit for analysis
+    if (combine) {
+      ## For each SDD that hasn't been considered yet:
+      ## Retrieve the points, see if they land in this current frame, keep the ones that do as part of the current points, and write it back into sdd.import without those
+      for (r in seq_along(sdd.order[!(sdd.order %in% c(sdd.completed, s))])) {
+        ## First bring in the points
+        pts.spdf.temp <- sdd.import$pts[[r]]
+        if (nrow(pts.spdf.temp@data) > 0) {
+          ## Get a version of the points clipped to the current frame
+          pts.spdf.temp.attribute <- attribute.shapefile(shape1 = pts.temp.spdf,
+                                                         shape2 = frame.spdf,
+                                                         attributefield = names(frame.spdf@data)[1], ## Not picky here. We're just looking to see if they intersect
+                                                         newfield = "MATCH"
+          )
+          ## Strip out the unnecessary field
+          pts.spdf.temp.attribute@data$MATCH <- NULL
+          ## Bind these points to the current SDD's
+          pts.spdf <- rbind(pts.spdf, pts.spdf.temp.attribute)
+          ## Remove the points that fell in the current frame from the temporary points and write it back into sdd.import
+          sdd.import$pts[[r]] <- pts.spdf.temp[!(pts.spdf.temp@data$TERRA_TERRADAT_ID %in% pts.spdf.temp.attribute@data$TERRA_TERRADAT_ID),]
+        }
+        
+        ## Then bring in the frame
+        frame.spdf.temp <- sdd.import$strata[[r]]
+        if (is.null(frame.spdf.temp)) {
+          frame.spdf.temp <- sdd.import$sf[[r]]
+        }
+        
+        ## Remove the current frame from the temporary frame. This will let us build concentric frame areas as we work up to larger designs through sdd.order
+        ## TODO: Make sure this is an SPDF
+        frame.spdf.temp <- gErase(frame.spdf.temp, frame.spdf)
+        
+        ## Write that into sdd.import
+        if (!is.null(sdd.import$strata[[r]])) {
+          sdd.import$strata[[r]] <- frame.spdf.temp
+        } else {
+          sdd.import$sf[[r]] <- frame.spdf.temp
+        }
       }
     }
     
@@ -742,7 +758,11 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                               Prop.dsgn.pts.obsrvd = Pprop,
                               Sampled.area.HA = Sarea,
                               Weight = wgt,
+                              Reporting.Unit.Restricted = F,
                               stringsAsFactors = F)
+        if (!is.null(reporting.units.spdf)) {
+          temp.df$Reporting.Unit.Restricted <- T
+        }
         ## Bind this stratum's information to the master.df initialized outside and before the loop started
         master.df <- rbind(master.df, temp.df)  ## pile it on.....
         
@@ -787,7 +807,11 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                             Prop.dsgn.pts.obsrvd = Pprop,
                             Sampled.area.HA = Sarea,
                             Weight = wgt,
+                            Reporting.Unit.Restricted = F,
                             stringsAsFactors = F)
+      if (!is.null(reporting.units.spdf)) {
+        temp.df$Reporting.Unit.Restricted <- T
+      }
       ## Bind this stratum's information to the master.df initialized outside and before the loop started
       master.df <- rbind(master.df, temp.df)  ## pile it on.....
       
@@ -818,11 +842,13 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   #   print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
   #   print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
   # }
+  
+  ## Rename the fields to what we want them to be in the output
   names(pointweights.df)[names(pointweights.df) == "TERRA_TERRADAT_ID"] <- "PRIMARYKEY"
   names(pointweights.df)[names(pointweights.df) == "PLOT_NM"] <- "PLOTID"
   ## Output is a named list with two data frames: information about the strata and information about the points
   # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
-  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT")]))
 }
 
 # The wgtcats are the unique combinations you get when overlaying design strata and reporting unit
