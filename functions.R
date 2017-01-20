@@ -523,6 +523,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
 
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
+                     combine = T, ## If provided multiple SDDs, should those be combined into a single analysis? Otherwise the weights will be calculated on a per-SDD basis
                      reorder = T, ## Should the SDDs be reordered by size or ar they provided in the order that they should be considered? Depends on how they overlap and user discretion
                      reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
                      reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
@@ -651,41 +652,45 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     ## Bring in this SDD's points
     pts.spdf <- sdd.import$pts[[s]]
     
-    ## For each SDD that hasn't been considered yet:
-    ## Retrieve the points, see if they land in this current frame, keep the ones that do, and write it back into sdd.import without those
-    for (r in seq_along(sdd.order[!(sdd.order %in% c(sdd.completed, s))])) {
-      ## First bring in the points
-      pts.spdf.temp <- sdd.import$pts[[r]]
-      if (nrow(pts.spdf.temp@data) > 0) {
-        ## Get a version of the points clipped to the current frame
-        pts.spdf.temp.attribute <- attribute.shapefile(shape1 = pts.temp.spdf,
-                                                       shape2 = frame.spdf,
-                                                       attributefield = names(frame.spdf@data)[1], ## Not picky here. We're just looking to see if they intersect
-                                                       newfield = "MATCH"
-        )
-        ## Strip out the unnecessary field
-        pts.spdf.temp.attribute@data$MATCH <- NULL
-        ## Bind these points to the current SDD's
-        pts.spdf <- rbind(pts.spdf, pts.spdf.temp.attribute)
-        ## Remove the points that fell in the current frame from the temporary points and write it back into sdd.import
-        sdd.import$pts[[r]] <- pts.spdf.temp[!(pts.spdf.temp@data$TERRA_TERRADAT_ID %in% pts.spdf.temp.attribute@data$TERRA_TERRADAT_ID),]
-      }
-      
-      ## Then bring in the frame
-      frame.spdf.temp <- sdd.import$strata[[r]]
-      if (is.null(frame.spdf.temp)) {
-        frame.spdf.temp <- sdd.import$sf[[r]]
-      }
-      
-      ## Remove the current frame from the temporary frame. This will let us build concentric frame areas as we work up to larger designs through sdd.order
-      ## TODO: Make sure this is an SPDF
-      frame.spdf.temp <- gErase(frame.spdf.temp, frame.spdf)
-      
-      ## Write that into sdd.import
-      if (!is.null(sdd.import$strata[[r]])) {
-        sdd.import$strata[[r]] <- frame.spdf.temp
-      } else {
-        sdd.import$sf[[r]] <- frame.spdf.temp
+    
+    ## Only do this if the user wants the SDDs to be considered as one unit for analysis
+    if (combine) {
+      ## For each SDD that hasn't been considered yet:
+      ## Retrieve the points, see if they land in this current frame, keep the ones that do as part of the current points, and write it back into sdd.import without those
+      for (r in seq_along(sdd.order[!(sdd.order %in% c(sdd.completed, s))])) {
+        ## First bring in the points
+        pts.spdf.temp <- sdd.import$pts[[r]]
+        if (nrow(pts.spdf.temp@data) > 0) {
+          ## Get a version of the points clipped to the current frame
+          pts.spdf.temp.attribute <- attribute.shapefile(shape1 = pts.temp.spdf,
+                                                         shape2 = frame.spdf,
+                                                         attributefield = names(frame.spdf@data)[1], ## Not picky here. We're just looking to see if they intersect
+                                                         newfield = "MATCH"
+          )
+          ## Strip out the unnecessary field
+          pts.spdf.temp.attribute@data$MATCH <- NULL
+          ## Bind these points to the current SDD's
+          pts.spdf <- rbind(pts.spdf, pts.spdf.temp.attribute)
+          ## Remove the points that fell in the current frame from the temporary points and write it back into sdd.import
+          sdd.import$pts[[r]] <- pts.spdf.temp[!(pts.spdf.temp@data$TERRA_TERRADAT_ID %in% pts.spdf.temp.attribute@data$TERRA_TERRADAT_ID),]
+        }
+        
+        ## Then bring in the frame
+        frame.spdf.temp <- sdd.import$strata[[r]]
+        if (is.null(frame.spdf.temp)) {
+          frame.spdf.temp <- sdd.import$sf[[r]]
+        }
+        
+        ## Remove the current frame from the temporary frame. This will let us build concentric frame areas as we work up to larger designs through sdd.order
+        ## TODO: Make sure this is an SPDF
+        frame.spdf.temp <- gErase(frame.spdf.temp, frame.spdf)
+        
+        ## Write that into sdd.import
+        if (!is.null(sdd.import$strata[[r]])) {
+          sdd.import$strata[[r]] <- frame.spdf.temp
+        } else {
+          sdd.import$sf[[r]] <- frame.spdf.temp
+        }
       }
     }
     
