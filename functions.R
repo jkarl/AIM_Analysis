@@ -687,8 +687,9 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         }
         
         ## Remove the current frame from the temporary frame. This will let us build concentric frame areas as we work up to larger designs through sdd.order
-        ## TODO: Make sure this is an SPDF
-        frame.spdf.temp <- gErase(frame.spdf.temp, frame.spdf)
+        ## Note: I'm not sure what happens if these don't overlap or if x is completely encompassed by y
+        frame.spdf.temp <- raster::erase(x = frame.spdf.temp %>% spTransform(project),
+                                         y = frame.spdf %>% spTransform(project))
         
         ## Write that into sdd.import
         if (!is.null(sdd.import$strata[[r]])) {
