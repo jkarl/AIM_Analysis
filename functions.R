@@ -992,4 +992,6 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
       warnings <- rbind(warnings, warn.df)
     }
   }
+
+  return(list(analyses = output, warnings = warnings))
 }
