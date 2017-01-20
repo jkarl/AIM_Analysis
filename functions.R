@@ -715,15 +715,13 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     if (!is.null(sdd.import$strata[[s]])) {
       ## since we have stratification, use Design Stratum attribute to determine the number of stratum, tally the extent of each stratum,
       ## then tally the no. of pts by stratum
-      designstrata <- unique(frame.spdf@data[, names(frame.spdf@data) %in% c(designstratumfield)])
-      
-      ## Create a vector called area to store the area values in hectares, named by the stratum
-      area <- group_by_(frame.spdf@data, designstratumfield) %>% summarize(area.ha.sum = sum(area.ha))[,"area.ha.sum"]
-      names(area) <- strata@data[, designstratumfield] %>% unique()
+
+      ## Create a data frame to store the area values in hectares for strata. The as.data.frame() is because it was a tibble for some reason
+      area.df <- group_by_(frame.spdf@data, designstratumfield) %>% summarize(AREA.HA.SUM = sum(AREA.HA)) %>% as.data.frame()
       
       ## no. pts by stratum
       ## This creates two named-by-fate-value vectors: Tpts (contains the number of points in each fate value) and Opts (contains the number of points for each TARGET fate value)
-      for (j in designstrata) {
+      for (j in area.df[, designstratumfield]) {
         Tpts <- NULL # total pts
         Opts <- NULL ## observed pts - i.e., sampled pts
         working.pts <- pts.spdf@data[pts.spdf@data[, pointstratumfieldname] == j,]
@@ -740,8 +738,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
           Pprop <- Opts/sigma	## realized proportion of the stratum that was sampled (observed/total no. of points) 
         }
         if (Opts > 0) {
-          wgt   <- (Pprop*area[j])/Opts  ## (The proportion of the total area that was sampled * total area [ha]) divided by the no. of observed points
-          Sarea <-  Pprop*area[j] ## Record the actual area(ha) sampled - (proportional reduction * stratum area)
+          wgt   <- (Pprop*area.df[area.df[, designstratumfield] == j, "AREA.HA.SUM"])/Opts  ## (The proportion of the total area that was sampled * total area [ha]) divided by the no. of observed points
+          Sarea <-  Pprop*area.df[area.df[, designstratumfield] == j, "AREA.HA.SUM"] ## Record the actual area(ha) sampled - (proportional reduction * stratum area)
         }
         
         ##Tabulate key information for this SDD, by stratum (j)  
@@ -750,7 +748,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                               Stratum = j,
                               Total.pts = sigma,
                               Observed.pts = Opts,
-                              Area.HA = area[j],
+                              Area.HA = area.df[area.df[, designstratumfield] == j, "AREA.HA.SUM"],
                               Prop.dsgn.pts.obsrvd = Pprop,
                               Sampled.area.HA = Sarea,
                               Weight = wgt,
@@ -759,32 +757,30 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         if (!is.null(reporting.units.spdf)) {
           temp.df$Reporting.Unit.Restricted <- T
         }
-        ## Bind this stratum's information to the master.df initialized outside and before the loop started
-        master.df <- rbind(master.df, temp.df)  ## pile it on.....
-        
-        ## store weights for the stratum j observed pts
-        ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
-        ## If a point had a target fate, assign the calculates weight
+
+        ## Bind this stratum's information to the master.df initialized outside the SDD loop
+        master.df <- rbind(master.df, temp.df)
+
+        ## If a point had a target fate, assign the calculated weight
         working.pts$WGT[working.pts[, pointstratumfieldname] == j & working.pts[, fatefieldname] %in% target.values] <- wgt
         ## If a point had a non-target or unknown designation, assign 0 as the weight
-        ##WGT init to zero, but these 2 lines are to make sure we record 0
         working.pts$WGT[working.pts[, pointstratumfieldname] == j & working.pts[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+        ## For some reason it's a list? It needs to be a vector
+        working.pts$WGT <- working.pts$WGT %>% unlist()
+        
         ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
-        pointweights.df <- rbind(pointweights.df, working.pts)
-      }## endof for (j in designstrata)
+        pointweights.df <- rbind(pointweights.df, working.pts[, c("TERRA_TERRADAT_ID", "PLOT_NM", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT")])
+      }
       
-      ## init re-used SPDFs
-      pts.spdf <- NULL
-      strata.spdf <- NULL
     } else {
       ## If there aren't strata available to us in a useful format in the SDD, we'll just weight by the sample frame
       ## since we lack stratification, use the sample frame to derive spatial extent in hectares
-      area <- frame.spdf@data$area.ha
+      area <- sum(frame.spdf@data$AREA.HA)
       
       ## derive weights
-      Pprop <- 1			## initialize - proportion of 1.0 means there were no nonresponses
-      wgt <- 0			## initialize wgt
-      Sarea <- 0			## initialize actual sampled area
+      Pprop <- 1 ## initialize - proportion of 1.0 means there were no nonresponses
+      wgt <- 0 ## initialize wgt
+      Sarea <- 0 ## initialize actual sampled area
       if (sum > 0) {
         Pprop <- target.count/sum ## realized proportion of the stratum that was sampled (observed/total no. of points)
       }
@@ -808,30 +804,22 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       if (!is.null(reporting.units.spdf)) {
         temp.df$Reporting.Unit.Restricted <- T
       }
+      
       ## Bind this stratum's information to the master.df initialized outside and before the loop started
-      master.df <- rbind(master.df, temp.df)  ## pile it on.....
+      master.df <- rbind(master.df, temp.df)
       
-      
-      ## store weights for the stratum j observed pts
-      ## At the end of the j loop, pts.spdf is used to output the key attributes listed in Step 7 below
       ## If a point had a target fate, assign the calculates weight
-      pts.spdf$WGT[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
+      pts.spdf@data$WGT[pts.spdf@data[, fatefieldname] %in% target.values] <- wgt
       ## If a point had a non-target or unknown designation, assign 0 as the weight
-      ##WGT init to zero, but these 2 lines are to make sure we record 0
-      pts.spdf$WGT[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
+      pts.spdf@data$WGT[pts.spdf@data[, fatefieldname] %in% c(nontarget.values, unknown.values)] <- 0
       
       ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
-      pointweights.df <- rbind(pointweights.df, pts.spdf@data)
-      
-      ## init re-used SPDFs
-      pts.spdf <- NULL		
-      sf.spdf <- NULL
-      
-    }## endof if no stratification
+      pointweights.df <- rbind(pointweights.df, pts.spdf@data[, c("TERRA_TERRADAT_ID", "PLOT_NM", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT")])
+    }
     
     ## Add this SDD to the vector that we use to screen out points from consideration above
     sdd.completed <- c(sdd.completed, s)
-  }  ## endof for(s in sdd.src )
+  }
   
   ## Diagnostics in case something goes pear-shaped
   # if (length(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))]) > 0) {
