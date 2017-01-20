@@ -600,8 +600,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       ## Deal with the points
       pts.spdf <- attribute.shapefile(shape1 = pts.spdf,
                                       shape2 = reporting.units.spdf,
-                                      newfield = reportingunitfield,
+                                      newfield = "REPORTING.UNIT.RESTRICTED",
                                       attributefield = reportingunitfield)
+      ## Overwrite whatever value was brought in from the reporting.units.spdf with T because we only want to know if they were restricted or not
+      pts.spdf@data$REPORTING.UNIT.RESTRICTED <- T
       ## Deal with frame.spdf
       frame.spdf <-  attribute.shapefile(shape1 = frame.spdf,
                                          shape2 = reporting.units.spdf,
@@ -651,6 +653,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     
     ## Bring in this SDD's points
     pts.spdf <- sdd.import$pts[[s]]
+    ## Add in the REPORTING.UNITS.RESTRICTED field with the value F if it's not there already. The only way it'd already be there is if the points were restricted
+    if (!("REPORTING.UNIT.RESTRICTED" %in% names(pts.spdf@data))) {
+      pts.spdf@data$REPORTING.UNIT.RESTRICTED <- F
+    }
     
     
     ## Only do this if the user wants the SDDs to be considered as one unit for analysis
@@ -843,7 +849,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   names(pointweights.df)[names(pointweights.df) == "PLOT_NM"] <- "PLOTID"
   ## Output is a named list with two data frames: information about the strata and information about the points
   # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
-  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
+  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT")]))
 }
 
 # The wgtcats are the unique combinations you get when overlaying design strata and reporting unit
