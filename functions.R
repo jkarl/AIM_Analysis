@@ -215,8 +215,7 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                                                   shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
-  # ## A nonsense separator for paste() to use that we'd never expect in any situation so we can use str_split() later
-  # separator <- "twas_brillig"
+  
   ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
   intersect.spdf.attribute@data$unique.identifier <- sha1(x = paste0(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
                                                            intersect.spdf.attribute@data[, spdf2.attributefieldname.output]),
@@ -528,8 +527,6 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
                      reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
-                     ## Assumes the following keywords are sufficient and consistent.
-                     ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
                      target.values = c("Target Sampled",
                                        "TS"),
                      unknown.values = c("Unknown",
@@ -546,7 +543,6 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83
 ){
   ## Sanitization
-  # names(tdat) <- str_to_upper(names(tdat))
   if (!is.null(reporting.units.spdf)) {
     names(reporting.units.spdf@data) <- str_to_upper(names(reporting.units.spdf@data))
   }
@@ -636,7 +632,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   }
 
   
-  ## Initialize our vector of already-considered SDDs which we'll use to work our way out in concentric rings
+  ## Initialize our vector of already-considered SDDs which we'll use to work our way out sequentially through sdd.order
   sdd.completed <- c()
   
   ## Loop through each SDD starting with the smallest-framed one and working up
