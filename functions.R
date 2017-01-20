@@ -748,7 +748,11 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                               Prop.dsgn.pts.obsrvd = Pprop,
                               Sampled.area.HA = Sarea,
                               Weight = wgt,
+                              Reporting.Unit.Restricted = F,
                               stringsAsFactors = F)
+        if (!is.null(reporting.units.spdf)) {
+          temp.df$Reporting.Unit.Restricted <- T
+        }
         ## Bind this stratum's information to the master.df initialized outside and before the loop started
         master.df <- rbind(master.df, temp.df)  ## pile it on.....
         
@@ -793,7 +797,11 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                             Prop.dsgn.pts.obsrvd = Pprop,
                             Sampled.area.HA = Sarea,
                             Weight = wgt,
+                            Reporting.Unit.Restricted = F,
                             stringsAsFactors = F)
+      if (!is.null(reporting.units.spdf)) {
+        temp.df$Reporting.Unit.Restricted <- T
+      }
       ## Bind this stratum's information to the master.df initialized outside and before the loop started
       master.df <- rbind(master.df, temp.df)  ## pile it on.....
       
