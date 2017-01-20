@@ -205,7 +205,6 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
   
   ## Find the intersection of the two SPDFs
   intersect.spdf.attribute <- raster::intersect(x = spdf1, y = spdf2)
-
   
   ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
   for (n in seq_along(intersect.spdf.attribute@data)) {
