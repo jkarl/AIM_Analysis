@@ -528,7 +528,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
                      ## Assumes the following keywords are sufficient and consistent.
                      ## "UNK" and "NT" show up in certain SDDs even though the shapefle attributes spell out the keywords and they're invalid??? 
-                     target.values = c("Target Sampled"),
+                     target.values = c("Target Sampled",
+                                       "TS"),
                      unknown.values = c("Unknown",
                                         "UNK"),
                      nontarget.values = c("Non-Target",
@@ -561,7 +562,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   ## The fate values that we know about are hardcoded here.
   ## Whatever values are provided in the function arguments get concatenated and then we keep only the unique values from that result
   target.values <- c(target.values,
-                     "Target Sampled") %>% unique() %>% str_to_upper()
+                     "Target Sampled",
+                     "TS") %>% unique() %>% str_to_upper()
   unknown.values <- c(unknown.values,
                       "Unknown",
                       "UNK") %>% unique() %>% str_to_upper()
