@@ -396,7 +396,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
                        projection = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0") ## Standard NAD83
 ){
   
-  ## readOGR() wrapped in safely() so that it will return NULL instead of an error. I need this for the function
+  ## readOGR() wrapped in safely() so that it will return NULL instead of an error
   safe.readOGR <- safely(readOGR, otherwise = NULL)
   
   ## Sanitization
@@ -641,7 +641,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     if (is.null(frame.spdf)) {
       frame.spdf <- sdd.import$sf[[s]]
     }
-    ## If this isn't the first pass through the loop, then the areas on the frame are incorrect because the SPDF has been subjected to gErase()
+    ## If this isn't the first pass through the loop, then the areas on the frame are incorrect because the SPDF has been subjected to erase()
     if (!is.null(sdd.completed)) {
       frame.spdf <- area.add(frame.spdf)
     }
