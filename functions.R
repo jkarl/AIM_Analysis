@@ -986,21 +986,10 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     ## Add the objective/management question info to those results
     aim.analysis$MANAGEMENT.QUESTION <- o
     
-    ## rbind() these results to the output data frame
-    # output < rbind(output, aim.analysis)
-    
-    ### Assign that to an object we can call later to combine all the loop results
-    assign(paste0(str_replace_all(o, " ", "."), ".analysis.output"), aim.analysis)
+    ## rbind() these results to the output data frame and the warnings if there are any
+    output <- rbind(output, aim.analysis)
     if (!is.null(warn.df)) {
       warnings <- rbind(warnings, warn.df)
     }
   }
-  
-  ## Make a list of all the names of data frames that came out of that loop
-  extant.results <- ls()[grepl(x = ls(), pattern = "\\.analysis.output$")]
-  
-  ## Bind together all the data frames listed in extant.results
-  output <- parser(string = paste0("rbind(`", paste(extant.results, collapse = "`, `"), "`)"))
-  
-  return(output)
 }
