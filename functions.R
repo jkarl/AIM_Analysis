@@ -653,7 +653,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     
     ## For each SDD that hasn't been considered yet:
     ## Retrieve the points, see if they land in this current frame, keep the ones that do, and write it back into sdd.import without those
-    for (r in sdd.order[!(sdd.order %in% c(sdd.completed, s))]) {
+    for (r in seq_along(sdd.order[!(sdd.order %in% c(sdd.completed, s))])) {
       ## First bring in the points
       pts.spdf.temp <- sdd.import$pts[[r]]
       if (nrow(pts.spdf.temp@data) > 0) {
