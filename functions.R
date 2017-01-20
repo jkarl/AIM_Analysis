@@ -227,17 +227,17 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
       ## When there are both units represented
       ## group_by_() is used instead of group_by() so that we can provide strings as arguments to let us programmatically use the attributefieldname.output values
       intersect.spdf.attribute@data <- group_by(intersect.spdf.attribute@data, UNIQUE.IDENTIFIER) %>%
-        summarize(area.ha.unit.sum = sum(area.ha), area.sqkm.unit.sum = sum(area.sqkm)) %>%
+        summarize(AREA.HA.UNIT.SUM = sum(AREA.HA), AREA.SQKM.UNIT.SUM = sum(AREA.SQKM)) %>%
         merge(x = intersect.spdf.attribute@data, y = .)
     } else if (!(area.ha) & area.sqkm) {
       ## When there's no area.ha
       intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data, UNIQUE.IDENTIFIER) %>%
-        summarize(area.sqkm.unit.sum = sum(area.sqkm)) %>%
+        summarize(AREA.SQKM.UNIT.SUM = sum(AREA.SQKM)) %>%
         merge(x = intersect.spdf.attribute@data, y = .)
     } else if (area.ha & !(area.sqkm)) {
       ## When there's no area.sqkm
       intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data, UNIQUE.IDENTIFIER) %>%
-        summarize(area.ha.unit.sum = sum(area.ha)) %>%
+        summarize(AREA.HA.UNIT.SUM = sum(AREA.HA)) %>%
         merge(x = intersect.spdf.attribute@data, y = .)
     }
   }
@@ -264,16 +264,16 @@ area.add <- function(spdf, ## SpatialPolygonsDataFrame to add area values to
   spdf <- spTransform(x = spdf, CRSobj = CRS("+proj=aea"))
   
   ## Add the area in hectares, stripping the IDs from gArea() output
-  spdf@data$area.ha <- gArea(spdf, byid = byid) * 0.0001 %>% unname()
+  spdf@data$AREA.HA <- gArea(spdf, byid = byid) * 0.0001 %>% unname()
   ## Add the area in square kilometers, converting from hectares
-  spdf@data$area.sqkm <- spdf@data$area.ha * 0.01
+  spdf@data$AREA.SQKM <- spdf@data$AREA.HA * 0.01
   
   ## Remove the areas that weren't requested. It's more straightforward and computationally cheaper to do it this way than run gArea() more than once
   if (!(area.ha)) {
-    spdf@data$area.ha <- NULL
+    spdf@data$AREA.HA <- NULL
   }
   if (!(area.sqkm)) {
-    spdf@data$area.sqkm <- NULL
+    spdf@data$AREA.SQKM <- NULL
   }
   return(spdf)
 }
