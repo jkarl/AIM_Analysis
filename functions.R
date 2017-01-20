@@ -896,15 +896,12 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
 }
 
 analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
-                     weights, ## The list output from weighter()
                      tdat ## The attributed TerrADat that has the reporting units
+                     weights, ## The point weights output from weighter(), so weighter()[["point.weights"]]
                      ) {
-  ## Splitting out the weighter() output
-  stratum.weights <- weights[[1]]
-  point.weights <- weights[[2]]
+  point.weights <- weights
   ## Sanitization
   names(evaluated.points) <- str_to_upper(names(evaluated.points))
-  names(stratum.weights) <- str_to_upper(names(stratum.weights))
   names(point.weights) <- str_to_upper(names(point.weights))
   if (class(tdat)[1] == "SpatialPointsDataFrame") {
     tdat <- tdat@data
