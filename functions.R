@@ -577,6 +577,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     pts.spdf <- sdd.import$pts[[s]]
     pts.spdf@data[, fatefieldname] <- str_to_upper(pts.spdf@data[, fatefieldname])
     pts.spdf@data$WGT <- 0
+    
     ## Get the stratum SPDF for this SDD and call it frame.spdf
     frame.spdf <- sdd.import$strata[[s]]
     ## If the frame.spdf was actually NULL, then grab the sample frame to use instead
