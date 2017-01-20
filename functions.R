@@ -584,7 +584,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
       frame.spdf <- sdd.import$sf[[s]]
     }
     ## Add the area to frame.spdf
-    frame.spdf <- area.add(frame.spdf, byid = F)
+    frame.spdf <- area.add(frame.spdf, byid = T)
     
     ## If there's a reporting.units.spdf provided, then we'll assign those identities to the SPDFs from sdd.import and restrict by them reporting.units.spdf
     if (!is.null(reporting.units.spdf)) {
@@ -595,17 +595,21 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
                                       attributefield = reportingunitfield)
       ## Overwrite whatever value was brought in from the reporting.units.spdf with T because we only want to know if they were restricted or not
       pts.spdf@data$REPORTING.UNIT.RESTRICTED <- T
-      ## Deal with frame.spdf
-      frame.spdf <-  attribute.shapefile(shape1 = frame.spdf,
-                                         shape2 = reporting.units.spdf,
-                                         newfield = reportingunitfield,
-                                         attributefield = reportingunitfield)
-      ## Add the correct area to frame.spdf
-      frame.spdf <- area.add(frame.spdf, byid = F)
+      ## Deal with frame.spdf. This involves an intersection and therefore is slow
+      frame.spdf.intersect <- intersector(spdf1 = frame.spdf,
+                                          ## Someone, in their wisdom, made the first field of both sample frames and strata a unique identifier. Blessings upon them
+                                          spdf1.attributefieldname = names(frame.spdf@data)[1],
+                                          spdf2 = reporting.units.spdf,
+                                          spdf2.attributefieldname = reportingunitfield)
+      ## Replace frame.spdf with this new thing, minus all the fields from reporting.units.spdf
+      frame.spdf <-  frame.spdf.intersect[, c(names(frame.spdf.intersect@data)[!(names(frame.spdf.intersect@data) %in% names(reporting.units.spdf@data))])]
+      ## Add REPORTING.UNIT.RESTRICTED
+      frame.spdf@data$REPORTING.UNIT.RESTRICTED <- T
     }
     
     ## Add the size of this SDD's frame to my list of them so I can use it
-    sdd.order[s] <- frame.spdf$area.ha[1]
+    ## We use sum() here because each polygon's area was calculated individually because that streamlines some future use of the area information
+    sdd.order[s] <- sum(frame.spdf$area.ha)
     
     ## Put the manipulated SPDFs back into the sdd.import for future use
     sdd.import$pts[[s]] <- pts.spdf
