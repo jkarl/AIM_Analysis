@@ -215,8 +215,7 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
                                                   shape2 = spdf2,
                                                   attributefield = spdf2.attributefieldname.input,
                                                   newfield = spdf2.attributefieldname.output)
-  # ## A nonsense separator for paste() to use that we'd never expect in any situation so we can use str_split() later
-  # separator <- "twas_brillig"
+  
   ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
   intersect.spdf.attribute@data$unique.identifier <- sha1(x = paste0(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
                                                            intersect.spdf.attribute@data[, spdf2.attributefieldname.output]),
