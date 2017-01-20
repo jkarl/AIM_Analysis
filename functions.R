@@ -613,11 +613,11 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     sdd.order[s] <- frame.spdf$area.ha[1]
     
     ## Put the manipulated SPDFs back into the sdd.import for future use
-    sdd.import$pts[s] <- pts.spdf
+    sdd.import$pts[[s]] <- pts.spdf
     if (!is.null(sdd.import$strata[[s]])) {
-      sdd.import$strata[s] <- frame.spdf
+      sdd.import$strata[[s]] <- frame.spdf
     } else {
-      sdd.import$sf[s] <- frame.spdf
+      sdd.import$sf[[s]] <- frame.spdf
     }
   }
   
