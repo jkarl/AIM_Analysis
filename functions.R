@@ -917,6 +917,7 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
   
   ## Initialize the output data frame
   output <- data.frame()
+  warnings <- data.frame()
   
   ## The actual analysis will be done on a per-objective level, so we're just going to loop through those because apply() is kind of a pain and this is computationally cheap enough (I think)
   for (o in unique(data$MANAGEMENT.QUESTION)) {
@@ -972,6 +973,9 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     ## and add the stratum areas to the popsize list
     aim.popsize = list("Reporting.Unit" = area.list)
     
+    ## In case we got warnings last time, nullify them
+    warn.df <- NULL
+    
     ### Now run cat.analysis
     aim.analysis <- cat.analysis(sites = aim.sites, subpop = aim.subpop, design = aim.design, data.cat = aim.datacat, popsize = aim.popsize)
     
@@ -983,6 +987,9 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     
     ### Assign that to an object we can call later to combine all the loop results
     assign(paste0(str_replace_all(o, " ", "."), ".analysis.output"), aim.analysis)
+    if (!is.null(warn.df)) {
+      warnings <- rbind(warnings, warn.df)
+    }
   }
   
   ## Make a list of all the names of data frames that came out of that loop
