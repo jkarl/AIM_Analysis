@@ -521,10 +521,8 @@ sdd.reader <- function(src = "", ## A filepath as a string
 }
 
 
-## TODO: Add in using the stratum value table if possible, because that should have the stratum area. Will only work with arcgisbinding :/
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
-                     # tdat, ## The TerrADat data frame to use. This lets you throw the whole thing in or slice it down first, if you like
                      reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
                      reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
