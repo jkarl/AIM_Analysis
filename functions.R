@@ -181,45 +181,39 @@ attribute.list <- function(points = SpatialPointsDataFrame( coords = matrix(1:2,
 #   return(output)
 # }
 
-## Creates a SpatialPolygonsDataFrame from the intersection of two SpatialPolygonsDataFrames, inheriting one defining attribute field from each
+## Creates a SpatialPolygonsDataFrame from the intersection of two SpatialPolygonsDataFrames
+## Basically a wrapping of raster::intersect() now, just with additional opportunity to call area.add() and automatically added unique identifiers
 intersector <- function(spdf1, ## A SpatialPolygonsShapefile
-                        spdf1.attributefieldname.input, ## Name of the field in SPDF1 to take values from
-                        spdf1.attributefieldname.output, ## Name of the field in the output SPDF to write values from SPDF1 into
+                        spdf1.attributefieldname, ## Name of the field in SPDF1 unique to the unit groups or units to take values from
+                        spdf1.attributefieldname.output = NULL, ## Optional name of the field in the output SPDF to duplicate values from spdf1.attributefieldname in
                         spdf2, ## A SpatialPolygonsShapefile
-                        spdf2.attributefieldname.input, ## Name of the field in SPDF2 to take values from
-                        spdf2.attributefieldname.output,  ## Name of the field in the output SPDF to write values from SPDF2 into
+                        spdf2.attributefieldname, ## Name of the field in SPDF2 unique to the unit groups or units to take values from
+                        spdf2.attributefieldname.output = NULL,  ## Optional name of the field in the output SPDF to duplicate values from spdf2.attributefieldname in
                         area.ha = T, ## Add fields for area in hectares for individual polygons and the sum of those within unique combinations of the input attribute fields
                         area.sqkm = T, ## Add fields for area in square kilometers for individual polygons and the sum of those within unique combinations of the input attribute fields
                         projection = CRS("+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs") ## Standard NAD83
 ){
   ## We'll need Alber's equal area projection for area calculations
   projectionAL <- CRS("+proj=aea")
-  ## TODO: Sanitization
+  ## Sanitization
+  spdf1 <- spdf1 %>% spTransform(projection)
+  spdf2 <- spdf2 %>% spTransform(projection)
+  names(spdf1) <- str_to_upper(names(spdf1))
+  names(spdf2) <- str_to_upper(names(spdf2))
+  spdf1.attributefieldname <- str_to_upper(spdf1.attributefieldname)
+  spdf2.attributefieldname <- str_to_upper(spdf2.attributefieldname)
+  
   ## Find the intersection of the two SPDFs
-  intersect.sp <- gIntersection(spgeom1 = spdf1 %>% spTransform(projection),
-                                spgeom2 = spdf2 %>% spTransform(projection),
-                                byid = T,
-                                drop_lower_td = T)
-  
-  ## Turn the SP into a SPDF. The data frame will be empty
-  intersect.spdf <- SpatialPolygonsDataFrame(Sr = intersect.sp,
-                                             data = data.frame(row.names = getSpPPolygonsIDSlots(intersect.sp)))
-  
-  ## Populate the empty @data with the attributes from the two SPDFs specified in the arguments *.attributefieldname.*
-  intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf,
-                                                  shape2 = spdf1,
-                                                  attributefield = spdf1.attributefieldname.input,
-                                                  newfield = spdf1.attributefieldname.output)
-  
-  intersect.spdf.attribute <- attribute.shapefile(shape1 = intersect.spdf.attribute,
-                                                  shape2 = spdf2,
-                                                  attributefield = spdf2.attributefieldname.input,
-                                                  newfield = spdf2.attributefieldname.output)
+  intersect.spdf.attribute <- raster::intersect(x = spdf1, y = spdf2)
+
   
   ## Create a single field to serve as a unique identifier to dissolve the polygons by. This concatenates with a known nonsense string so we can split them later
-  intersect.spdf.attribute@data$unique.identifier <- sha1(x = paste0(intersect.spdf.attribute@data[, spdf1.attributefieldname.output],
-                                                           intersect.spdf.attribute@data[, spdf2.attributefieldname.output]),
-                                                          digits = 14)
+  for (n in seq_along(intersect.spdf.attribute@data)) {
+    intersect.spdf.attribute@data$UNIQUE.IDENTIFIER[n] <- sha1(x = paste0(intersect.spdf.attribute@data[n, spdf1.attributefieldname],
+                                                                       intersect.spdf.attribute@data[n, spdf2.attributefieldname]),
+                                                            digits = 14)
+  }
+  
   
   ## If we're adding areas then:
   if (area.ha | area.sqkm) {
@@ -232,29 +226,30 @@ intersector <- function(spdf1, ## A SpatialPolygonsShapefile
     if (area.ha & area.sqkm) {
       ## When there are both units represented
       ## group_by_() is used instead of group_by() so that we can provide strings as arguments to let us programmatically use the attributefieldname.output values
-      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
-                                                 "unique.identifier",
-                                                 paste(spdf1.attributefieldname.output),
-                                                 paste(spdf2.attributefieldname.output)
-      ) %>% summarize(area.ha.unit.sum = sum(area.ha),
-                      area.sqkm.unit.sum = sum(area.sqkm)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+      intersect.spdf.attribute@data <- group_by(intersect.spdf.attribute@data, UNIQUE.IDENTIFIER) %>%
+        summarize(area.ha.unit.sum = sum(area.ha), area.sqkm.unit.sum = sum(area.sqkm)) %>%
+        merge(x = intersect.spdf.attribute@data, y = .)
     } else if (!(area.ha) & area.sqkm) {
       ## When there's no area.ha
-      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
-                                                 "unique.identifier",
-                                                 paste(spdf1.attributefieldname.output),
-                                                 paste(spdf2.attributefieldname.output)
-      ) %>% summarize(area.sqkm.unit.sum = sum(area.sqkm)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data, UNIQUE.IDENTIFIER) %>%
+        summarize(area.sqkm.unit.sum = sum(area.sqkm)) %>%
+        merge(x = intersect.spdf.attribute@data, y = .)
     } else if (area.ha & !(area.sqkm)) {
       ## When there's no area.sqkm
-      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data,
-                                                 "unique.identifier",
-                                                 paste(spdf1.attributefieldname.output),
-                                                 paste(spdf2.attributefieldname.output)
-      ) %>% summarize(area.ha.unit.sum = sum(area.ha)) %>% merge(x = intersect.spdf.attribute@data, y = .)
+      intersect.spdf.attribute@data <- group_by_(intersect.spdf.attribute@data, UNIQUE.IDENTIFIER) %>%
+        summarize(area.ha.unit.sum = sum(area.ha)) %>%
+        merge(x = intersect.spdf.attribute@data, y = .)
     }
   }
-
+  
+  ## Create the fields requested if they' exist're specified
+  if (!is.null(spdf1.attributefieldname.output)) {
+    intersect.spdf.attribute@data[, spdf1.attributefieldname.output] <- intersect.spdf.attribute@data[, spdf1.attributefieldname]
+  }
+  if (!is.null(spdf2.attributefieldname.output)) {
+    intersect.spdf.attribute@data[, spdf2.attributefieldname.output] <- intersect.spdf.attribute@data[, spdf2.attributefieldname]
+  }
+  
   ## Return the final SPDF, making sure to project it into NAD83 (or whatever projection was provided to override the default)
   return(intersect.spdf.attribute %>% spTransform(projection))
 }
