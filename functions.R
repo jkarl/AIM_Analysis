@@ -824,6 +824,8 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   #   print("Somehow the following points were in the SDD and weighted, but had no counterpart in the provided TerrADAT")
   #   print(paste(pointweights.df.merged$PLOTID[!(unique(pointweights.df.merged$PLOTID) %in% unique(pointweights.df.merged$PLOTID))], collapse = ", "))
   # }
+  
+  ## Rename the fields to what we want them to be in the output
   names(pointweights.df)[names(pointweights.df) == "TERRA_TERRADAT_ID"] <- "PRIMARYKEY"
   names(pointweights.df)[names(pointweights.df) == "PLOT_NM"] <- "PLOTID"
   ## Output is a named list with two data frames: information about the strata and information about the points
