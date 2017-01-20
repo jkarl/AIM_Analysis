@@ -523,6 +523,7 @@ sdd.reader <- function(src = "", ## A filepath as a string
 
 ## This function produces point weights by design stratum (when the SDD contains them) or by sample frame (when it doesn't)
 weighter <- function(sdd.import, ## The output from sdd.reader()
+                     reorder = T, ## Should the SDDs be reordered by size or ar they provided in the order that they should be considered? Depends on how they overlap and user discretion
                      reporting.units.spdf = NULL, ## An optional reporting unit SPDF that will be used to clip the SDD import before calculating weights
                      reportingunitfield = "REPORTING.UNIT", ## If passing a reporting unit SPDF, what field in it defines the reporting unit[s]?
                      ## Keywords for point fate—the values in the vectors unknown and nontarget are considered nonresponses.
@@ -621,11 +622,16 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     }
   }
   
-  ## Time to reorder that list of SDDs
-  ## Turn the lsit into a vector and then sort it in ascending order
-  sdd.order <- unlist(sdd.order)[sdd.order %>% unlist() %>% sort.list(decreasing = F)]
-  ## Then take the names of the SDDs assigned to those values because we want those, not the areas
-  sdd.order <- names(sdd.order)
+  ## Time to reorder that list of SDDs, if the user wants that, otherwise keep the order that they were fed to sdd.reader() (and therefore appear in sdd.import)
+  if (reorder) {
+    ## Turn the lsit into a vector and then sort it in ascending order
+    sdd.order <- unlist(sdd.order)[sdd.order %>% unlist() %>% sort.list(decreasing = F)]
+    ## Then take the names of the SDDs assigned to those values because we want those, not the areas
+    sdd.order <- names(sdd.order)
+  } else {
+    sdd.order <- names(sdd.order)
+  }
+
   
   ## Initialize our vector of already-considered SDDs which we'll use to work our way out in concentric rings
   sdd.completed <- c()
