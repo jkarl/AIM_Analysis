@@ -653,6 +653,10 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
     if (!("REPORTING.UNIT.RESTRICTED" %in% names(pts.spdf@data))) {
       pts.spdf@data$REPORTING.UNIT.RESTRICTED <- F
     }
+    ## Add in the coordinates
+    pts.spdf@data <- cbind(pts.spdf@data, pts.spdf@coords)
+    names(pts.spdf)[names(pts.spdf) == "coords.x1"] <- "LONGITUDE"
+    names(pts.spdf)[names(pts.spdf) == "coords.x2"] <- "LATITUDE"
     
     
     ## Only do this if the user wants the SDDs to be considered as one unit for analysis
@@ -770,7 +774,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
         working.pts$WGT <- working.pts$WGT %>% unlist()
         
         ## Add the point SPDF now that it's gotten the extra fields to the list of point SPDFs so we can use it after the loop
-        pointweights.df <- rbind(pointweights.df, working.pts[, c("TERRA_TERRADAT_ID", "PLOT_NM", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT")])
+        pointweights.df <- rbind(pointweights.df, working.pts[, c("TERRA_TERRADAT_ID", "PLOT_NM", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT", "LONGITUDE", "LATITUDE")])
       }
       
     } else {
@@ -833,7 +837,7 @@ weighter <- function(sdd.import, ## The output from sdd.reader()
   names(pointweights.df)[names(pointweights.df) == "PLOT_NM"] <- "PLOTID"
   ## Output is a named list with two data frames: information about the strata and information about the points
   # return(list(strata.weights = master.df, point.weights = pointweights.df.merged[, c("PRIMARYKEY", "PLOTID", "FINAL_DESIG", "WGT")]))
-  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT")]))
+  return(list(strata.weights = master.df, point.weights = pointweights.df[, c("PRIMARYKEY", "PLOTID", "REPORTING.UNIT.RESTRICTED", "FINAL_DESIG", "WGT", "LONGITUDE", "LATITUDE")]))
 }
 
 # The wgtcats are the unique combinations you get when overlaying design strata and reporting unit
