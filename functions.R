@@ -938,12 +938,16 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
                                by.y = c("PRIMARYKEY")) %>% distinct()
     
     ## Because it's easier to do this now while the data frame is still just one object and not four or five
-    names(data.wide.current)[names(data.wide.current) %in% c("PLOTID", "WGT", "REPORTING.UNIT","LONGITUDE", "LATITUDE")] <- c("siteID", "wgt", "Reporting.Unit", "xcoord", "ycoord")
+    names(data.wide.current)[names(data.wide.current) == "PLOTID"] <- "siteID"
+    ## If there are adjusted weights and we want to use them, then this is where to do it.
     if (adjustedweights & ("ADJWGT" %in% names(data.wide.current))) {
       names(data.wide.current)[names(data.wide.current) == "ADJWGT"] <- "wgt"
     } else {
       names(data.wide.current)[names(data.wide.current) == "WGT"] <- "wgt"
     }
+    names(data.wide.current)[names(data.wide.current) == "REPORTING.UNIT"] <- "Reporting.Unit"
+    names(data.wide.current)[names(data.wide.current) == "LONGITUDE"] <- "xcoord"
+    names(data.wide.current)[names(data.wide.current) == "LATITUDE"] <- "ycoord"
     ## All the sites are active? Sure! Why not?
     data.wide.current$Active <- T
     
