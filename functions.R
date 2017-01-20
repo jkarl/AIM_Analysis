@@ -896,8 +896,8 @@ weight.adjuster <- function(points, ## The weighted output from weighter(), so w
 }
 
 analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
-                     tdat ## The attributed TerrADat that has the reporting units
                      weights, ## The point weights output from weighter(), so weighter()[["point.weights"]]
+                     tdat, ## The attributed TerrADat that has the reporting units
                      ) {
   point.weights <- weights
   ## Sanitization
@@ -931,7 +931,7 @@ analyzer <- function(evaluated.points, ## Data frame output from benchmarker()
     
     ## Add in the reporting unit information from the supplied TerrADat
     data.wide.current <- merge(x = data.wide.current,
-                               y = tdat[, c("PRIMARYKEY", "REPORTING.UNIT", "LONGITUDE", "LATITUDE")],
+                               y = tdat[, c("PRIMARYKEY", "REPORTING.UNIT")],
                                by.x = c("PRIMARYKEY"),
                                by.y = c("PRIMARYKEY")) %>% distinct()
     
