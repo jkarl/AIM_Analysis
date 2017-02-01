@@ -4,6 +4,7 @@ date: 'Report date: `r format(Sys.time(), "%d %B, %Y")`'
 description: ''
 output:
   html_document:
+    css: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\styles.css
     fig_caption: yes
     toc: yes
   pdf_document:
@@ -138,8 +139,8 @@ addLSProp <- function(prop.table, analysis.table, ru) {
 ## Function for logic comparing estimated proportions for an indicator to its required landscape proportion.
 objectiveMet <- function(prop.base,relation,prop.est.lcb,prop.est.ucb) {
   
-  low.comp <- eval(parse(text=paste(prop.est.lcb, "<=", prop.base)))
-  up.comp <- eval(parse(text=paste(prop.base,"<",prop.est.ucb)))
+  low.comp <- eval(parse(text=paste(prop.est.lcb, "<=", prop.base*100)))
+  up.comp <- eval(parse(text=paste(prop.base*100,"<",prop.est.ucb)))
   if (low.comp & up.comp) { #  required prop within CI
     return("Inconclusive")
   } else if (!low.comp & up.comp) { # estimted proportion above required prop
@@ -409,7 +410,7 @@ for (lev in ru.levels) { # by reporting unit level
     prop.table <-  prop.table[,-c(5,6,8,10,11)] %>% arrange(Management.Question,Evaluation.Category)  # sort by mgt question and category
     names(prop.table) <- c("Management Question","Benchmark Source","Indicator","Category","Required Proportion","Estimated Proportion","Objective Met?")
     cat("\n## Reporting Unit Level:",ru,"\n")
-    print(xtable(prop.table),type='html',include.rownames=FALSE, html.table.attributes=list("border='0' cellpadding='5' "))
+    print(xtable(prop.table,align=c("l","l","l","l","l","c","c","c")),type='html',include.rownames=FALSE, html.table.attributes=list("border='0' cellpadding='5' class='bordered_table' "))
   }
 }
 
