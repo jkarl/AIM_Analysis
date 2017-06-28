@@ -1,5 +1,5 @@
 ---
-title:  Draft `r params$project.shortname` Project Analysis Report
+title: "Draft `r params$project.shortname` Project Analysis Report"
 date: 'Report date: `r format(Sys.time(), "%d %B, %Y")`'
 description: ''
 output:
@@ -12,21 +12,21 @@ output:
   word_document:
     toc: yes
 params:
-  #project: Idaho Bruneau FO 2015 # Project Name from TerrADat
-  project.shortname: Bruneau FO 2015-2016
-  conf.level: 80
-  project.file.dir: C:\Users\jasokarl\Google Drive\BLM_AIM\Analysis_Reporting\Bruneau\BFO_2015_test_170217
-  cat.analysis.infile: BFO_2015_test_analysis.csv
   benchmarks.filename: DataExplorer_AnalysisSprint_BruneauFO.xlsx
-  proj.points: BFO_2015_test_point_attributes_datefix.csv
+  cat.analysis.infile: BFO_2015_test_analysis.csv
+  conf.level: 80
+  cats.to.suppress: "Not Meeting"
   design.stratum.stats: BFO_2015_test_design_stratum_stats.csv
   design.stratum.weights: BFO_2015_test_design_stratum_weights.csv
-  projarea.file: BRFO_Study_Area.shp
-  sampfrm.file: BFO_2015_test_combined_sampleframes.shp
-  repunits.file: BFO_2015_test_reportingunits.shp
-  sdd.gdb: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\Bruneau_Example\BFO_2015-2019_SDD_122116.gdb
   grassShrubDir: C:\Users\jasokarl\Google Drive\BLM_AIM\geodata\grass_shrub
   ind_lut: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\data\tdat_indicator_lut.csv
+  proj.points: BFO_2015_test_point_attributes_datefix.csv
+  projarea.file: BRFO_Study_Area.shp
+  project.file.dir: C:\Users\jasokarl\Google Drive\BLM_AIM\Analysis_Reporting\Bruneau\BFO_2015_test_170217
+  project.shortname: Bruneau FO 2015-2016
+  repunits.file: BFO_2015_test_reportingunits.shp
+  sampfrm.file: BFO_2015_test_combined_sampleframes.shp
+  sdd.gdb: C:\Users\jasokarl\Documents\GitHub\AIM_Analysis\Viz_Reporting\Bruneau_Example\BFO_2015-2019_SDD_122116.gdb
 always_allow_html: yes
 ---
 
@@ -86,12 +86,15 @@ projFile <- function(f) {
 indicatorPlot <- function(df,ru,subpop,indicator,mq,threshold=0.5) {
   plot.data <- df %>% filter(Type==ru & Subpopulation==subpop & Indicator==indicator & MANAGEMENT.QUESTION==mq) %>% filter(Category!="Total")
   ind.realname <- vlookup(indicator,indicator.lut,1,2) ## Lookup the pretty name for the indicator
-  ggplot(plot.data, aes(x=Category,y=Estimate.P,fill=Category))+geom_bar(stat="identity", width=0.5)+coord_flip()+
+  p<- ggplot(plot.data, aes(x=Category,y=Estimate.P,fill=Category))+geom_bar(stat="identity", width=0.5)+coord_flip()+
     geom_errorbar(aes(ymax=UCB95Pct.P,ymin=LCB95Pct.P),width=0.25)+
     scale_fill_brewer(type="div",palette="RdYlBu")+
-    geom_hline(yintercept=threshold,colour="gold",size=2)+
     ylim(0,100)+
     ggtitle(paste("Percentage of Reporting Unit by Category: \n",ind.realname,sep=""))+ylab("Estimated Percent of Reporting Unit Area")
+  if (threshold>0) {
+    p <- p+geom_hline(yintercept=threshold,colour="gold",size=2)
+  }
+  return(p)
 }
 
 ## Function to display table of cat.analysis results. Takes same arguments as indicatorPlot function (minus the threshold argument)
@@ -120,6 +123,20 @@ indicatorMap <- function(level,ru,repunits.spdf,prjarea.spdf) {
   return(m)
 }
 
+indicatorMap.new <- function(level,ru,repunits.spdf,prjarea.spdf,samplepts.spdf) {
+  runit <- repunits.spdf[repunits.spdf$Type==level&repunits.spdf$Sbppltn==ru,] # get the reporting unit
+  ru.points <- over(samplepts.spdf,runit,returnList=F)
+  m <- ggplot()+geom_polygon(data=fortify(prjarea.spdf),aes(x=long,y=lat),fill="white",color="black")+coord_map()
+  if (level=="Study Area") {
+    m<-m+geom_polygon(data=fortify(prjarea.spdf),aes(x=long,y=lat,group=group),fill="darkgray")
+  } else {
+    m<-m+geom_polygon(data=fortify(runit),aes(x=long,y=lat,group=group),fill="darkgray")
+  }
+  m<-m+geom_point(data=ru.points,aes(x=Longitude,y=Latitude,group=ProjectName),color="black")
+  m<-m+theme(line=element_blank(),text=element_blank(),title=element_blank())
+  return(m)
+}
+
 ## Function to add the estimated landscape proportions to the management objectives table for a reporting unit.
 ## Function also makes a determination as to whether or not the objective is met
 ## Requires the following inputs:
@@ -132,7 +149,7 @@ addLSProp <- function(prop.table, analysis.table, ru) {
   prop.table$Indicator <- unlist(lapply(prop.table$indicator.name.alt, FUN=vlookup, indicator.lut,2,1))
   
   # Get the estimated proportions from the analysis table for the reporting unit
-  a <- analysis.table[analysis.table$Subpopulation==ru & analysis.table$Category!="Total",c("Indicator","Category","NResp","Estimate.P","LCB95Pct.P","UCB95Pct.P")]
+  a <- analysis.table[analysis.table$Subpopulation==ru & analysis.table$Category!="Total",c("Indicator","Category","NResp","Estimate.P","StdError.P","LCB95Pct.P","UCB95Pct.P")]
   
   # join the estimated proportions into prop.table
   prop.table <- prop.table %>% left_join(a,by=c("Indicator"="Indicator","Evaluation.Category"="Category"))  
@@ -142,7 +159,8 @@ addLSProp <- function(prop.table, analysis.table, ru) {
   for (i in 1:nrow(prop.table)) { # I'm sure there's a slicker way to do this than a loop, but I can't figure it out at 10pm...
     r <- prop.table[i,]
     if (!(is.na(r$Required.Proportion) | r$Required.Proportion=="") & !is.na(r$LCB95Pct.P)) {
-      prop.table[i,"Objective.Met"] <- objectiveMet(r$Required.Proportion,r$Proportion.Relation,r$LCB95Pct.P,r$UCB95Pct.P)
+      #prop.table[i,"Objective.Met"] <- objectiveMet(r$Required.Proportion,r$Proportion.Relation,r$LCB95Pct.P,r$UCB95Pct.P)
+      prop.table[i,"Objective.Met"] <- objectiveMet.new(r$Required.Proportion,r$Proportion.Relation,r$Estimate.P,r$NResp,r$StdError.P)
     }
   }
   
@@ -179,8 +197,58 @@ objectiveMet <- function(prop.base,relation,prop.est.lcb,prop.est.ucb) {
   return(result)
 }
 
+objectiveMet.new <- function(prop.base,relation,est.prop,n,std.err) {
+  
+  # run comparisons first
+  if (eval(parse(text=paste(est.prop, "<", prop.base*100)))) { # Is the estimated proportion less than the threshold?
+    comp <- "below"
+  } else if (eval(parse(text=paste(prop.base*100,"<",est.prop)))){ # Is the estimated prop greater than the threshold?
+    comp <- "above"
+  } else { # otherwise must be equal
+    comp <- "equal"
+  }
+
+  # Calc the t statistic for comparison of prop.base to est.prop
+  t <- (est.prop - prop.base*100)/std.err
+  # determine the probability of a greater t value
+  if (n-1>0) {
+    p.val <- pt(t,n-1)
+  } else { # Trap for bad sample size input.
+    p.val <- 999
+  }
+  
+  #Set up significance level ratings
+  if (p.val <= 1-(params$conf.level/100)) { # If p.val is less than 1-(conf.level/100) - i.e., alpha -, then conclude different from threshold
+    sig <- ""
+  } else if (p.val < (1-(params$conf.level/100))*1.5) { # if p.val less than half of alpha, likely different
+    sig <- "Likely "
+  } else if (p.val < (1-(params$conf.level/100))*2) { # if p.val less than 1/4 of alpha, likely different
+    sig <- "Possibly "
+  } else {
+    sig <- "At threshold" # else conclude not different than threshold value
+  }
+  
+  # Compile the result and return
+  if (sig=="At threshold") {
+    result <- ""
+  } else if (relation==">=") {
+    if (comp=="below") {
+      result <- "No"
+    } else {
+      result <- "Yes"
+    }
+  } else {
+    if (comp=="below") {
+      result<-"Yes"
+    } else {
+      result<-"No"
+    }
+  }
+  return(paste(sig,result,sep=""))
+}
+
 #### Standard messages to insert at will
-msg1 <- paste("This graph shows the estimated percentage of the reporting unit in different categories for the specified indicator. ",params$conf.level,"% confidence intervals around those estimates are provided as error bars. The yellow bar denotes the landscape criterion, or point at which an objective is deemed to be met or not met as defined in the Sample Design Worksheet.",sep="")
+msg1 <- paste("This graph shows the estimated percentage of the reporting unit in different categories for the specified indicator. ",params$conf.level,"% confidence intervals (CI) around those estimates are provided as error bars. The yellow bar denotes the landscape criterion, or point at which an objective is deemed to be met or not met as defined in the Sample Design Worksheet.",sep="")
 
 msg2 <- paste("This table gives the analysis results for the specified indicator and reporting unit, and contains the data used to create the graph above.")
 
@@ -200,12 +268,17 @@ msgGrob <- "EXAMPLE\nESTIMATES\nDo not use!"
   repUnits.spdf <- shapefile(projFile(params$repunits.file))
   ## Clean up so that the geometry will display right on the map
   repUnits.spdf <- gBuffer(repUnits.spdf,byid=T,width=0)
+  ## set projection info
+  crs(repUnits.spdf) <- sp::CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
   
 ## Plot information from TerrADat (date sampled, lat/long, indicator values)
   ## Load the TerrADat points and their attributes from the output of the analysis script
   ##    Faster, smaller, and already filtered to the points that were used in the analysis
   tdat.proj.spdf <- read.csv(projFile(params$proj.points),header=T,stringsAsFactors = FALSE)
   coordinates(tdat.proj.spdf) <- ~Longitude+Latitude
+  ## set projection info
+  crs(tdat.proj.spdf) <- sp::CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
   
   # fix the dates for plotting
   tdat.proj.spdf$year <- year(as.Date(tdat.proj.spdf$DateVisited))
@@ -346,7 +419,7 @@ In addition to this report from which charts and tablar data can be copied/paste
 For additional information, please see <http://aim.landscapetoolbox.org> or contact <ekachergis@blm.gov>. 
 
 ***
-# Data Summary {.tabset}
+# Data Summary {.tabset .tabset-fade .tabset-pills}
 The following tabs contain tables and graphs describing the information in this report and the sampling effort. This includes the indicators being considered, the time period of sampling, descriptions of the actual sampling effort relative to the original sampling design, and a map of the sample points and reporting units.
 
 ## Map of Study Area, Reporting Units, and Sample Points
@@ -358,13 +431,13 @@ The map below is provided for general reference only. It was created from the sp
 bnds <- bbox(prjarea.spdf)
 m <- leaflet(sampfrm.spdf) %>% addTiles() %>%
   fitBounds(bnds[1,1],bnds[2,1],bnds[1,2],bnds[2,2]) %>%
-  addPolygons(data=sampfrm.spdf,fill=TRUE,stroke=TRUE,color="tan",fillOpacity = 0.6,weight=2, group="Sample Frame") %>%
+  addPolygons(data=sampfrm.spdf,fill=TRUE,stroke=TRUE,color="tan",fillOpacity = 0.6,weight=2, group="BLM Lands") %>%
   addPolygons(data=prjarea.spdf,fill=FALSE,stroke=TRUE,color="#222",weight=3, group="Study Area") %>%
   addPolygons(data=repUnits.spdf,fill=FALSE,stroke=TRUE,color="#000",weight=2,fillOpacity=0.6,group="Reporting Units") %>%
   addCircleMarkers(data=tdat.proj.spdf, radius=4, color="navy",stroke=FALSE,fillOpacity = 0.8, group="Sample Points") %>%
-  addLegend("bottomright",colors=c("#222","tan","navy","#000"),labels=c("Study Area Boundary","Sample Frame","Design Sample Points","Reporting Units")) %>%
+  addLegend("bottomright",colors=c("#222","tan","navy","#000"),labels=c("Study Area Boundary","BLM Lands","Sample Points","Reporting Units")) %>%
   addLayersControl(
-    overlayGroups = c("Sample Points","Sample Frame","Reporting Units","Study Area"),
+    overlayGroups = c("Sample Points","BLM Lands","Reporting Units","Study Area"),
     options=layersControlOptions(collapsed=FALSE)
   )
 m
@@ -408,6 +481,8 @@ This report covers data collected between __`r as.Date(min(tdat.proj.spdf$DateVi
 ## Plot Sampling Summary
 Not all points originally selected as part of a design can be sampled. Selected points may not be accessible or when evaluated may be deemed to not even be part of the population. The [Rejection Criteria page on the AIM Landscape Toolbox website](http://aim.landscapetoolbox.org/office-sample-point-evaluation/) describes the rejection criteria for evaluating plots. To properly adjust the sampling weights and ensure unbiased estimates, it is important to know the fate of each of the originally-selected points. The graph below summarizes the point fates for the sample design(s) considered in this report.
 
+**Target sampled** points are those that occurred on BLM lands and were visited by a field crew. **Inaccessible** points were ones that were on BLM lands, but for one reason or another, the crew could not physically access the site (e.g., needed to cross private land and access was denied, road was washed out). **Non-target** points refers to points that upon evaluation were determined to not be on BLM lands or occurred in water. **Unknown** points are those for which their fate was not recorded. If sampling objectives (e.g., condition estimate or confidence interval width) were achieved without sampling all of the selected points, then any excess points could be marked as **Unneeded** (this is not common in terrestrial AIM studies).
+
 ```{r samplingSummary, error=FALSE, message=FALSE, echo=FALSE}
 ggplot(data=as.data.frame(point.fates), aes(x=factor(YEAR), fill=variable, y=n,label=n))+geom_bar(stat="identity",width=0.5)+coord_flip()+
   scale_fill_brewer(type="div",palette="RdYlBu")+
@@ -433,7 +508,9 @@ print(xtable(strat.sampling.table),type='html',include.rownames=FALSE,html.table
 # Goals, Monitoring Objectives, Benchmarks, and Results Summary
 This table summarizes the results of this report.  It contains broad goals as well as monitoring objectives and whether they were achieved based on available monitoring data for the area of interest.  Monitoring objectives include key indicators, benchmarks that define desired values of the indicators, and the proportion of the landscape required to meet benchmarks.  Together, this information can be used by BLM land managers to determine whether goals are being achieved and to recommend changes in management, if needed.  
 
-## Results Summary {.tabset}
+*Note that the Monitoring Objectives and Benchmarks listed here are directly from the Terrestrial Benchmark Workbook that was filled out by the field office.*
+
+## Results Summary {.tabset .tabset-fade .tabset-pills}
 ```{r lsPropsTables, echo=FALSE,messages=FALSE, warning=FALSE, results='asis'}
 prop.table <- benchmarks.sum[,c(1,7,3,2,4,5)]
 prop.table$LS.Prop <- paste(prop.table$Proportion.Relation,prop.table$Required.Proportion*100,"%",sep=" ")
@@ -448,10 +525,12 @@ for (lev in ru.levels) { # by reporting unit level
   for (ru in rus) { # by specific reporting unit
     prop.table.ru <- addLSProp(prop.table, aim.analysis, ru)
     prop.table.ru <-  prop.table.ru[,-c(2,5,6,8)] %>% arrange(Management.Question,Evaluation.Category)  # sort by mgt question and category
+    prop.table.ru <- prop.table.ru %>% select(-StdError.P)
     names(prop.table.ru) <- c("Management Question","Indicator","Category","Required Percent","n","Estimated Percent","Lower CI","Upper CI","Objective Met?")
-    #hold[[i]] <- print(xtable(prop.table.ru,align=c("l","l","l","l","c","c","c","c","c","c")),type='html',include.rownames=FALSE, html.table.attributes=list("border='0' cellpadding='5' class='bordered_table' "))
+    prop.table.ru.strip <- prop.table.ru[prop.table.ru$Category!=params $cats.to.suppress,] # Strip out the categories to suppress
+    
     ## Dump these into a list so we can print them out later. Need to first generate the summary table
-    tables.hold[[i]] <- xtable(prop.table.ru,align=c("l","l","l","l","c","c","c","c","c","c"))
+    tables.hold[[i]] <- xtable(prop.table.ru.strip,align=c("l","l","l","l","c","c","c","c","c","c"))
     i <- i+1
     
     prop.table.ru$lev <- lev
@@ -463,16 +542,20 @@ for (lev in ru.levels) { # by reporting unit level
 # print the summary tables by whether or not meeting objectives
 vals <- unique(summary.table[summary.table[,9]!="",9])
 #vals <- sort(vals,decreasing=T)
-vals <- c("Met","Not Met","Inconclusive")
+vals <- c("YES","NO","AT THRESHOLD")
 for (val in vals) {
-  cat("\n### Objectives Summary: ",val,"\n")
-  d <- summary.table[which(summary.table[,9]==val),]
+  #d <- summary.table[which(summary.table[,9]==val),]
+  d <- summary.table[grepl(paste(val,"$",sep=""),toupper(summary.table[,9])),]
   d <- d[,c(1,2,9,11)]
   names(d) <- c("Managment Question","Indicator","Objective Met?","Reporting Unit")
-  print(xtable(d),type='html',include.rownames=FALSE, html.table.attributes=list("border='0' cellpadding='5' class='bordered_table' "))
+  if (nrow(d)>0) {
+    cat("\n### Objectives Met: ",val,"\n")
+    print(xtable(d),type='html',include.rownames=FALSE, html.table.attributes=list("border='0' cellpadding='5' class='bordered_table' "))
+  }
 }
 ```
-## Goals, Objectives, Results and Benchmarks by Reporting Unit {.tabset}
+## Goals, Objectives, Results and Benchmarks by Reporting Unit {.tabset .tabset-fade .tabset-pills}
+These tables below summarize the results of specific indicators that were evaluated against management objectives and reporting units that were defined in the Monitoring Design Worksheet. A seprate table is presented for each reporting unit, and these tables state the indicators, evaluation categories, and required landscape proportion that should be met for each management question. The estimated proportion of the reporting unit in the different categories, upper and lower confidence intervals (CI), and a statement of whether the stated objective was met (based on the required landscape percent) are also presented.This information can be used by BLM land managers to determine whether goals are being achieved and to recommend changes in management, if needed. 
 ```{r GORBtables, echo=FALSE,messages=FALSE, warning=FALSE, results='asis'}
 # Then print the tables by reporting unit
 i<-1
@@ -510,7 +593,7 @@ This section identifies the condition of each indicator for each area of interes
 
 
 ```{r conditionResults, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, results='asis'}
-cat("\n## Results by Reporting Unit {.tabset}\n")
+cat("\n## Results by Reporting Unit {.tabset .tabset-fade .tabset-pills}\n")
 for (lev in ru.levels) { # by reporting unit level
 
   #cat("\n",msg1,"\n")
@@ -540,7 +623,8 @@ for (lev in ru.levels) { # by reporting unit level
         }
         
         g <- indicatorPlot(aim.analysis,lev,ru,ind,mq,req.prop)
-        m <- indicatorMap(lev,ru,repUnits.spdf,prjarea.spdf)
+        #m <- indicatorMap(lev,ru,repUnits.spdf,prjarea.spdf)
+        m <- indicatorMap.new(lev,ru,repUnits.spdf,prjarea.spdf,tdat.proj.spdf,ind,mq)
         txt <- textGrob(msgGrob,just="centre",gp=gpar(fontsize=18,col="red"))
         grid.arrange(arrangeGrob(m,txt,nrow=2),g,ncol=2,widths=c(1,3))
         cat("\n")
@@ -561,7 +645,11 @@ for (lev in ru.levels) { # by reporting unit level
 
 ***
 # Spatial Distribution of Core Indicators
-These maps depict spatial representation of a selection of AIM indicators that were developed using remote sensing. **These maps are provided for reference only.** To maintain performance of the report document and keep file sizes small, the map products displayed here have been resampled from their native resolution (30m) to a scale of 120m resolution. For detailed analyses or for higher-quality maps, download the products from their source.
+The USGS, in partnership with the BLM, has developed a series of shrubland remote-sensing products that predict the spatial distribution of many of the core indicators. This includes maps of shrub cover, sagebrush cover, bare ground, perennial grass cover, annual grass cover, and more. Land cover data from the USGS National Land Cover Database (NLCD) 2011 shows the distribution of general vegetation types in the study area. In some cases these maps represent indicators directly related to management questions. In other cases, these maps may show indicators that are related indirectly to a management question. In either case, these products can be very useful in beginning to understand **WHERE** resource concerns might be within a reporting unit or study area. 
+
+The map below depicts a selection of AIM indicators available from the USGS NLCD Shrublands Products and the NLCD 2011. The full suite of NLCD Shrubland products is available for download from USGS at <https://www.mrlc.gov/nlcdshrub_avail.php>. The NLCD 2011 data can be downloaded from <https://www.mrlc.gov/nlcd11_data.php>.
+
+**This map is provided for general reference only.** To maintain performance of the report document and keep file sizes small, the map products displayed here have been resampled from their native resolution (30m) to a scale of 120m resolution. For detailed analyses or for higher-quality maps, download the products from their source.
 
 ```{r rsMaps, echo=FALSE, fig.height=7, fig.width=7, message=FALSE, warning=FALSE}
 pal.bare <- colorNumeric("OrRd", 100:0, na.color = "transparent")
@@ -572,11 +660,14 @@ m <- leaflet() %>% addTiles() %>%
   addRasterImage(shrub.g,colors=pal.veg,opacity=0.8,group="Shrub Cover") %>% 
     addLegend(pal=pal.veg, values=1:100, title="% Shrub Cover", labFormat = labelFormat(suffix="%")) %>%
   addPolygons(data=repUnits.spdf,fill=FALSE,stroke=TRUE,color="#000",weight=2,fillOpacity=0.6,group="Reporting Units") %>%
+  addCircleMarkers(data=tdat.proj.spdf, radius=4, color="navy",stroke=FALSE,fillOpacity = 0.8, group="Sample Points") %>%
+  addLegend("bottomleft",colors=c("navy","#000"),labels=c("Sample Points","Reporting Units")) %>%
   addLayersControl(
-      overlayGroups = c("Reporting Units","Bare Ground","Shrub Cover"),
+      overlayGroups = c("Sample Points","Reporting Units","Bare Ground","Shrub Cover"),
       options=layersControlOptions(collapsed=FALSE), position="topleft") %>%
   hideGroup("Shrub Cover")
 m
+
 
 ```
 
